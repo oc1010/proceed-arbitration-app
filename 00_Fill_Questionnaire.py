@@ -8,6 +8,15 @@ if role not in ['claimant', 'respondent']:
     st.error("Access Denied")
     st.stop()
 
+# --- SIDEBAR ---
+with st.sidebar:
+    st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    st.divider()
+    st.caption("NAVIGATION")
+    st.page_link("main.py", label="Home Dashboard", icon="🏠")
+    st.page_link("pages/00_Fill_Questionnaire.py", label="Procedural Questionnaire", icon="📋")
+    st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+
 st.title("📋 Pre-Hearing Questionnaire")
 
 structure = load_structure()
