@@ -9,7 +9,21 @@ if st.session_state.get('user_role') is None:
     st.error("Please login.")
     st.stop()
 
-# LOAD AND CLEAN DATA
+# --- SIDEBAR ---
+with st.sidebar:
+    st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    st.divider()
+    st.caption("NAVIGATION")
+    st.page_link("main.py", label="Home Dashboard", icon="🏠")
+    
+    if st.session_state['user_role'] == 'arbitrator':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire", icon="✏️")
+        st.page_link("pages/01_Drafting_Engine.py", label="Drafting Engine", icon="📝")
+        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+    else:
+        st.page_link("pages/00_Fill_Questionnaire.py", label="Procedural Questionnaire", icon="📋")
+        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+
 raw_data = load_timeline()
 df = pd.DataFrame(raw_data)
 
