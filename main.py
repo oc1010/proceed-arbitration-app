@@ -2,7 +2,7 @@ import streamlit as st
 
 st.set_page_config(page_title="PROCEED Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# --- AUTHENTICATION ---
+# --- AUTH ---
 USERS = {
     "admin": "admin123",       
     "claimant": "party123",    
@@ -30,7 +30,7 @@ if st.session_state['user_role'] is None:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         with st.container(border=True):
-            st.subheader("System Access")
+            st.subheader("Login")
             st.text_input("Username", key="username")
             st.text_input("Password", type="password", key="password")
             if st.button("Log In", type="primary", use_container_width=True):
@@ -40,45 +40,42 @@ if st.session_state['user_role'] is None:
                 st.code("admin / admin123\nclaimant / party123")
     st.stop()
 
-# --- NAVIGATION SIDEBAR ---
+# --- SIDEBAR (VISIBLE ALWAYS) ---
 with st.sidebar:
-    st.markdown(f"User: **{st.session_state['user_role'].upper()}**")
+    st.write(f"User: **{st.session_state['user_role'].upper()}**")
     if st.button("Sign Out"): logout()
     st.divider()
     
+    st.caption("NAVIGATION")
+    # We do NOT link to main.py here to avoid KeyError
+    
     if st.session_state['user_role'] == 'arbitrator':
-        st.page_link("main.py", label="Home Dashboard", icon="🏠")
-        st.subheader("1. Setup")
         st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire", icon="✏️")
-        st.subheader("2. Manage")
         st.page_link("pages/01_Drafting_Engine.py", label="Drafting Engine", icon="📝")
         st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
     else:
-        st.page_link("main.py", label="Home Dashboard", icon="🏠")
         st.page_link("pages/00_Fill_Questionnaire.py", label="Procedural Questionnaire", icon="📋")
         st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
 
+# --- MAIN CONTENT ---
 st.title("PROCEED: Tribunal Dashboard")
 
 if st.session_state['user_role'] == 'arbitrator':
     st.success("System Status: Online. Database Connected.")
     c1, c2, c3 = st.columns(3)
     
-    # CARD 1: QUESTIONNAIRE (NEW)
     with c1:
         with st.container(border=True):
             st.markdown("### 1. Questionnaire")
-            st.write("Customize and publish the procedural questionnaire to parties.")
+            st.write("Customize and publish the procedural questionnaire.")
             if st.button("Edit Questionnaire"): st.switch_page("pages/00_Edit_Questionnaire.py")
             
-    # CARD 2: DRAFTING
     with c2:
         with st.container(border=True):
             st.markdown("### 2. Drafting")
-            st.write("Generate PO1 using party responses and smart logic.")
+            st.write("Generate PO1 using party responses.")
             if st.button("Open Drafting Engine"): st.switch_page("pages/01_Drafting_Engine.py")
             
-    # CARD 3: TIMELINE
     with c3:
         with st.container(border=True):
             st.markdown("### 3. Timeline")
@@ -89,5 +86,5 @@ else:
     st.markdown("### Active Tasks")
     with st.container(border=True):
         st.warning("⚠️ Action Required: Pre-Hearing Questionnaire")
-        st.write("The Tribunal requests your preferences for the conduct of the arbitration.")
+        st.write("The Tribunal requests your preferences regarding the procedure.")
         if st.button("Start Questionnaire", type="primary"): st.switch_page("pages/00_Fill_Questionnaire.py")
