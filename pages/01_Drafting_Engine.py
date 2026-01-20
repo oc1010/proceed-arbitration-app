@@ -36,7 +36,6 @@ with st.sidebar:
 st.title("Procedural Order No. 1 | Drafting Engine")
 
 # --- 1. INITIALIZE CONTEXT (Prevent KeyError) ---
-# Pre-fill all expected keys with defaults so the document generator never crashes.
 context = {
     'Case_Number': 'ARB/24/001', 
     'seat_of_arbitration': 'London', 
@@ -68,7 +67,6 @@ context = {
     'time_confirm_contact': '7 days', 
     'time_notify_counsel': 'immediately'
 }
-# Pre-fill deadline keys
 for i in range(1, 16):
     context[f"deadline_{i:02d}"] = "TBD"
 
@@ -86,7 +84,7 @@ def display_hint(key):
         if "**" in txt:
             parts = txt.split("**")
             if len(parts) >= 2: return parts[1].strip()
-        return txt.split(".")[0]
+        return txt.split(".")[0] if txt else "Pending"
 
     c_clean = clean_hint(c)
     r_clean = clean_hint(r)
@@ -150,7 +148,7 @@ with tabs[0]:
             st.info("No data submitted yet.")
         else:
             summary_data = []
-            # Sort keys based on their numeric prefix if possible (e.g. "1. Style" comes before "10. Fees")
+            # Sort keys based on their numeric prefix
             def sort_key(k):
                 text = dynamic_map.get(k, k)
                 try:
@@ -168,10 +166,8 @@ with tabs[0]:
                 # CLEANER: Extract only the bold title "Option A: Style"
                 def clean_val(v):
                     if "**" in v:
-                        # Extract text between the first set of double asterisks
                         parts = v.split("**")
                         if len(parts) >= 2: return parts[1].strip()
-                    # Fallback: Split by period if no bolding found
                     return v.split(".")[0] if v and "." in v else v
                 
                 c_clean = clean_val(c_val)
@@ -198,7 +194,6 @@ with tabs[1]:
     context['Case_Number'] = c1.text_input("Case Reference Number", context['Case_Number'])
     context['seat_of_arbitration'] = c1.text_input("Seat of Arbitration", context['seat_of_arbitration'])
     
-    # Safe date handling
     try:
         default_date = date.today()
     except:
@@ -227,7 +222,6 @@ with tabs[2]:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Claimant")
-        # Try to auto-fill if they used the text area
         rep_info_c = responses.get('claimant', {}).get('reps_info', '')
         
         context['claimant_rep_1'] = st.text_input("Lead Counsel (Claimant)", context['claimant_rep_1'])
@@ -288,7 +282,6 @@ with tabs[4]:
             d['d10'] = st.date_input("10. Expert Reports", date.today() + timedelta(weeks=26))
             d['d14'] = st.date_input("14. Oral Hearing", date.today() + timedelta(weeks=36))
 
-    # Map dates to context for the template
     context['deadline_01'] = d['d1'].strftime("%d %B %Y")
     context['deadline_02'] = d['d2'].strftime("%d %B %Y")
     context['deadline_03'] = d['d3'].strftime("%d %B %Y")
@@ -329,7 +322,7 @@ with tabs[6]:
     st.subheader("Hearing Logistics")
     
     display_hint("venue_type")
-    display_hint("physical_venue_preference") # In case new questions use different ID
+    display_hint("physical_venue_preference")
     display_hint("interpretation")
     display_hint("chess_clock")
     display_hint("transcription")
