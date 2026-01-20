@@ -13,14 +13,15 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- 1. STRUCTURE ---
+# --- 1. STRUCTURE (Cached) ---
+# ttl=600 means "remember this for 10 minutes" (or until cleared)
+@st.cache_data(ttl=600)
 def load_structure():
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record', resp.json())
-            # If "initial_setup" flag is present, it means it's empty/reset
             if "initial_setup" in data: return None
             return data
     except: pass
@@ -29,8 +30,11 @@ def load_structure():
 def save_structure(data):
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}"
     requests.put(url, json=data, headers=HEADERS)
+    load_structure.clear() # Clear cache so next load gets new data
 
-# --- 2. RESPONSES ---
+# --- 2. RESPONSES (Cached) ---
+# ttl=2 means "refresh every 2 seconds" (fast enough for real-time, slow enough to stop lag)
+@st.cache_data(ttl=2)
 def load_responses():
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
     try:
@@ -45,8 +49,10 @@ def load_responses():
 def save_responses(data):
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}"
     requests.put(url, json=data, headers=HEADERS)
+    load_responses.clear()
 
-# --- 3. TIMELINE ---
+# --- 3. TIMELINE (Cached) ---
+@st.cache_data(ttl=5)
 def load_timeline():
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}/latest"
     try:
@@ -62,14 +68,14 @@ def load_timeline():
 def save_timeline(data):
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}"
     requests.put(url, json=data, headers=HEADERS)
+    load_timeline.clear()
 
-# --- 4. SYSTEM RESET ---
+# --- 4. RESET ---
 def reset_database():
-    """Wipes Responses and Timeline, and RESTORES default questions."""
-    # 1. Clear Responses
     save_responses({"initial_setup": True})
-    # 2. Clear Timeline
     save_timeline([{"initial_setup": True}])
-    # 3. Reset Structure (Force app to reload defaults)
     save_structure({"initial_setup": True}) 
+    load_structure.clear()
+    load_responses.clear()
+    load_timeline.clear()
     return True
