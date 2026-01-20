@@ -30,7 +30,7 @@ if st.session_state['user_role'] is None:
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
         with st.container(border=True):
-            st.subheader("Login")
+            st.subheader("System Access")
             st.text_input("Username", key="username")
             st.text_input("Password", type="password", key="password")
             if st.button("Log In", type="primary", use_container_width=True):
@@ -40,14 +40,14 @@ if st.session_state['user_role'] is None:
                 st.code("admin / admin123\nclaimant / party123")
     st.stop()
 
-# --- SIDEBAR (VISIBLE ALWAYS) ---
+# --- SIDEBAR ---
 with st.sidebar:
-    st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    st.markdown(f"User: **{st.session_state['user_role'].upper()}**")
     if st.button("Sign Out"): logout()
     st.divider()
     
     st.caption("NAVIGATION")
-    # We do NOT link to main.py here to avoid KeyError
+    # NOTE: We do NOT link to main.py here to prevent the crash
     
     if st.session_state['user_role'] == 'arbitrator':
         st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire", icon="✏️")
