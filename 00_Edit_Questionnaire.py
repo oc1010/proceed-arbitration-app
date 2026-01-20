@@ -7,6 +7,16 @@ if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied")
     st.stop()
 
+# --- SIDEBAR ---
+with st.sidebar:
+    st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    st.divider()
+    st.caption("NAVIGATION")
+    st.page_link("main.py", label="Home Dashboard", icon="🏠")
+    st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire", icon="✏️")
+    st.page_link("pages/01_Drafting_Engine.py", label="Drafting Engine", icon="📝")
+    st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+
 st.title("✏️ Questionnaire Editor")
 st.caption("Customize the questions sent to the parties. Changes are saved to the Cloud instantly.")
 
@@ -34,8 +44,10 @@ with st.form("editor_form"):
             c1, c2 = st.columns([3, 1])
             new_q_text = c1.text_input(f"Question #{i+1}", value=q['question'], key=f"q_{i}")
             new_type = c2.selectbox("Type", ["radio", "selectbox"], index=0 if q['type']=="radio" else 1, key=f"t_{i}")
+            
             options_str = ", ".join(q['options'])
             new_options_str = st.text_area(f"Options #{i+1}", value=options_str, key=f"o_{i}")
+            
             updated_structure.append({
                 "id": q['id'], "question": new_q_text, "type": new_type, 
                 "options": [opt.strip() for opt in new_options_str.split(",")]
