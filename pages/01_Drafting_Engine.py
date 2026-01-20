@@ -2,7 +2,7 @@ import streamlit as st
 from docxtpl import DocxTemplate
 from io import BytesIO
 from datetime import date, timedelta
-from db import load_responses, save_timeline
+from db import load_responses, save_timeline, reset_database
 import os
 import pandas as pd
 
@@ -12,22 +12,62 @@ if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied.")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (With Reset Button) ---
 with st.sidebar:
     st.write(f"User: **{st.session_state['user_role'].upper()}**")
     if st.button("Logout", use_container_width=True):
         st.session_state['user_role'] = None
         st.switch_page("main.py")
+    
     st.divider()
     st.caption("NAVIGATION")
     st.page_link("main.py", label="Home")
     st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire")
     st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
     st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
+    
+    st.divider()
+    st.caption("ADMIN CONTROLS")
+    if st.button("⚠️ Factory Reset System", help="Deletes all party answers and the timeline.", type="secondary"):
+        reset_database()
+        st.toast("System Reset Complete!", icon="🗑️")
+        st.rerun()
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- SMART LOGIC ---
+# --- TRANSLATION MAP ---
+TOPIC_MAP = {
+    "style": "Written Submission Style",
+    "bifurcation": "Bifurcation",
+    "consolidation": "Consolidation",
+    "deadline_def": "Timezone Definition",
+    "extensions": "Extension Protocol",
+    "doc_prod": "Document Production Rules",
+    "limits": "Doc Request Limits",
+    "privilege_std": "Privilege Standard",
+    "privilege_logs": "Privilege Logs",
+    "shredding": "Data Shredding",
+    "witness_exam": "Witness Examination Mode",
+    "expert_meeting": "Expert Meetings",
+    "expert_hot_tub": "Expert Questioning (Hot-Tub)",
+    "expert_reply": "Reply Expert Reports",
+    "venue_type": "Physical Hearing Venue",
+    "interpretation": "Interpretation Needs",
+    "chess_clock": "Time Allocation",
+    "transcription": "Transcription Service",
+    "demonstratives": "Demonstrative Exhibits",
+    "post_hearing": "Post-Hearing Briefs",
+    "page_limits": "Page Limits",
+    "ai_guidelines": "AI Usage Guidelines",
+    "sign_award": "Award Signature (Electronic)",
+    "currency": "Award Currency",
+    "interest": "Interest Calculation",
+    "last_submission": "Last Submission Definition",
+    "secretary": "Tribunal Secretary",
+    "sec_fees": "Secretary Fees",
+    "funding": "Third-Party Funding"
+}
+
 responses = load_responses()
 
 def display_hint(key):
@@ -37,9 +77,7 @@ def display_hint(key):
     elif c == r: st.success(f"Agreed: {c}")
     else: st.warning(f"Conflict: Claimant '{c}' vs Respondent '{r}'")
 
-# --- SAVE LOGIC ---
 def save_schedule(dates, style):
-    # (Same timeline logic as before)
     events = [
         {"date": str(dates['d1']), "event": "Statement of Case", "owner": "Claimant", "status": "Pending"},
         {"date": str(dates['d2']), "event": "Statement of Defence", "owner": "Respondent", "status": "Pending"},
@@ -65,21 +103,26 @@ def save_schedule(dates, style):
 tabs = st.tabs(["Party Preferences", "General", "Parties", "Tribunal", "Timetable", "Evidence", "Hearing", "Logistics", "Award"])
 context = {}
 
-# 1. PREFERENCES TAB
+# 1. PREFERENCES TAB (Readable)
 with tabs[0]:
     st.subheader("Summary of Questionnaire Responses")
     c_data = responses.get('claimant', {})
     r_data = responses.get('respondent', {})
     all_keys = list(set(list(c_data.keys()) + list(r_data.keys())))
+    
     if not all_keys:
         st.info("No data submitted yet.")
     else:
         summary_data = []
         for k in all_keys:
+            # Use the MAP to get readable name, fallback to ID if missing
+            topic_name = TOPIC_MAP.get(k, k)
+            
             c_val = c_data.get(k, "Pending")
             r_val = r_data.get(k, "Pending")
             match = "Yes" if c_val == r_val and c_val != "Pending" else "No"
-            summary_data.append({"Topic ID": k, "Claimant": c_val, "Respondent": r_val, "Agreement": match})
+            summary_data.append({"Topic": topic_name, "Claimant": c_val, "Respondent": r_val, "Agreement": match})
+        
         st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
 
 # 2. GENERAL TAB
@@ -194,6 +237,7 @@ with tabs[6]:
     display_hint("interpretation")
     display_hint("chess_clock")
     display_hint("transcription")
+    display_hint("demonstratives")
     
     c1, c2 = st.columns(2)
     context['place_in_person'] = c1.text_input("Physical Venue", "IDRC London")
