@@ -13,18 +13,16 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- 1. QUESTIONNAIRE STRUCTURE ---
+# --- 1. STRUCTURE ---
 def load_structure():
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record', resp.json())
-            # Handle dummy init data
             if "initial_setup" in data: return None
             return data
-    except:
-        pass
+    except: pass
     return None
 
 def save_structure(data):
@@ -40,8 +38,7 @@ def load_responses():
             data = resp.json().get('record', resp.json())
             if "initial_setup" in data: return {"claimant": {}, "respondent": {}}
             return data
-    except:
-        pass
+    except: pass
     return {"claimant": {}, "respondent": {}}
 
 def save_responses(data):
@@ -55,12 +52,10 @@ def load_timeline():
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record', resp.json())
-            # FILTER OUT THE DUMMY "INITIAL_SETUP" ITEM
             if isinstance(data, list):
-                return [item for item in data if "initial_setup" not in item]
+                return [x for x in data if "initial_setup" not in x]
             return []
-    except:
-        pass
+    except: pass
     return []
 
 def save_timeline(data):
