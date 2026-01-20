@@ -1,5 +1,6 @@
 import streamlit as st
-from db import load_structure, save_structure, reset_database
+from db import load_structure, save_structure
+import time
 
 st.set_page_config(page_title="Edit Questionnaire", layout="wide")
 
@@ -24,13 +25,13 @@ with st.sidebar:
     
     st.divider()
     st.caption("ADMIN ACTIONS")
-    if st.button("🔄 Restore Defaults", use_container_width=True):
+    if st.button("🔄 Restore Default Questions", help="Re-loads the full master list of questions.", use_container_width=True):
         save_structure({"initial_setup": True}) 
-        st.toast("Restored!")
+        st.toast("Questions restored!")
         st.rerun()
 
 st.title("✏️ Questionnaire Editor")
-st.caption("Edit the questions below. Each option is in a separate box for easier editing.")
+st.caption("Customize the questions. Uncheck 'Include' to hide a question. Click 'Add New' to create your own.")
 
 # --- MASTER QUESTION BANK ---
 DEFAULT_QUESTIONS = [
@@ -398,7 +399,7 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # XIII. CONTACT INFO
+    # XIII. CONTACT INFO (Last)
     {
         "id": "reps_info", 
         "question": "37. Authorised Representatives (Contact Details)", 
@@ -412,9 +413,31 @@ current_structure = load_structure()
 if not current_structure:
     current_structure = DEFAULT_QUESTIONS
 
+# --- ADD CUSTOM QUESTION ---
+if st.button("➕ Add New Question", type="primary"):
+    new_id = f"custom_{int(time.time())}"
+    # Default 'next' number logic
+    try:
+        last_q_text = current_structure[-1]['question']
+        last_num = int(last_q_text.split(".")[0])
+        next_num = last_num + 1
+    except:
+        next_num = len(current_structure) + 1
+        
+    new_q = {
+        "id": new_id,
+        "question": f"{next_num}. New Question",
+        "type": "radio",
+        "options": ["**Option A:** Choice 1", "**Option B:** Choice 2"]
+    }
+    current_structure.append(new_q)
+    save_structure(current_structure)
+    st.rerun()
+
 # --- EDITOR UI ---
 with st.form("editor_form"):
     updated_structure = []
+    st.markdown("### Questions Configuration")
     
     for i, q in enumerate(current_structure):
         with st.container(border=True):
@@ -444,9 +467,8 @@ with st.form("editor_form"):
                     val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
                     new_options.append(val)
                 
-                # Add button to append a new option if needed (simplified: just 4 slots by default for now or keep existing count)
-                # If user wants to add more, they'd need a dynamic list which is complex in Streamlit forms.
-                # For now, we stick to editing existing ones to keep it robust.
+                # OPTIONAL: Allow adding *one more* option slot dynamically if needed?
+                # For simplicity, we just save what is edited.
             else:
                 new_options = ["Text Input"]
 
