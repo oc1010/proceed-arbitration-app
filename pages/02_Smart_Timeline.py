@@ -9,20 +9,25 @@ if st.session_state.get('user_role') is None:
     st.error("Please login.")
     st.stop()
 
+def logout():
+    st.session_state['user_role'] = None
+    st.switch_page("main.py")
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    if st.button("Logout", use_container_width=True): logout()
     st.divider()
     st.caption("NAVIGATION")
-    st.page_link("main.py", label="Home Dashboard", icon="🏠")
+    st.page_link("main.py", label="Home")
     
     if st.session_state['user_role'] == 'arbitrator':
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire", icon="✏️")
-        st.page_link("pages/01_Drafting_Engine.py", label="Drafting Engine", icon="📝")
-        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire")
+        st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
+        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
     else:
-        st.page_link("pages/00_Fill_Questionnaire.py", label="Procedural Questionnaire", icon="📋")
-        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline", icon="📅")
+        st.page_link("pages/00_Fill_Questionnaire.py", label="Procedural Questionnaire")
+        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
 
 raw_data = load_timeline()
 df = pd.DataFrame(raw_data)
