@@ -1,0 +1,6 @@
+streamlit
+pandas
+plotly
+docxtpl
+python-docx
+requests
