@@ -52,19 +52,12 @@ with st.form("party_form"):
         elif curr_val in q['options']: list_index = q['options'].index(curr_val)
         else: list_index = 0
 
-        # RENDER RADIO BUTTONS WITH MARKDOWN FORMATTING
-        # We define a formatting function to display bold titles properly
-        def format_option(option_text):
-            # This relies on the convention "**Option A:** Description"
-            return option_text 
-
         if q['type'] == "radio":
             selection = st.radio(
                 "Select one:", 
                 q['options'], 
                 index=list_index, 
-                key=f"rad_{q['id']}", 
-                format_func=format_option
+                key=f"rad_{q['id']}"
             )
         else:
             selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}")
