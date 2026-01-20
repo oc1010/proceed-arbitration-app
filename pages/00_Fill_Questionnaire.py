@@ -35,7 +35,8 @@ with st.form("party_form"):
     new_responses = {}
     
     for q in structure:
-        st.markdown(f"**{q['question']}**")
+        st.markdown(f"### {q['question']}")
+        
         curr_val = my_responses.get(q['id'], "")
         
         # TEXT INPUT HANDLING
@@ -45,16 +46,28 @@ with st.form("party_form"):
             st.divider()
             continue
 
-        # STANDARD OPTION HANDLING
+        # Determine Index
         is_custom = curr_val not in q['options'] and curr_val != ""
         if is_custom and "Other" in q['options']: list_index = q['options'].index("Other")
         elif curr_val in q['options']: list_index = q['options'].index(curr_val)
         else: list_index = 0
 
+        # RENDER RADIO BUTTONS WITH MARKDOWN FORMATTING
+        # We define a formatting function to display bold titles properly
+        def format_option(option_text):
+            # This relies on the convention "**Option A:** Description"
+            return option_text 
+
         if q['type'] == "radio":
-            selection = st.radio("Select:", q['options'], index=list_index, key=f"rad_{q['id']}", label_visibility="collapsed")
+            selection = st.radio(
+                "Select one:", 
+                q['options'], 
+                index=list_index, 
+                key=f"rad_{q['id']}", 
+                format_func=format_option
+            )
         else:
-            selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}", label_visibility="collapsed")
+            selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}")
         
         final_answer = selection
         if selection == "Other":
@@ -63,7 +76,7 @@ with st.form("party_form"):
             if custom_input: final_answer = custom_input
         
         new_responses[q['id']] = final_answer
-        st.divider()
+        st.markdown("---")
         
     if st.form_submit_button("Submit Responses", type="primary"):
         all_responses[role] = new_responses
