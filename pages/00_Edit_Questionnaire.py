@@ -25,15 +25,15 @@ with st.sidebar:
     
     st.divider()
     st.caption("ADMIN ACTIONS")
-    if st.button("🔄 Restore Defaults", help="Re-loads the full master list from the template.", use_container_width=True):
+    if st.button("🔄 Restore Default Questions", help="Re-loads the full master list of questions.", use_container_width=True):
         save_structure({"initial_setup": True}) 
         st.toast("Questions restored!")
         st.rerun()
 
 st.title("✏️ Questionnaire Editor")
-st.caption("Edit the questions below. Each option is in a separate box for easier editing.")
+st.caption("Customize the questions. Uncheck 'Include' to remove a question. Click 'Add New' to create your own.")
 
-# --- MASTER QUESTION BANK (MATCHING YOUR DOCX) ---
+# --- MASTER QUESTION BANK ---
 DEFAULT_QUESTIONS = [
     # I. WRITTEN SUBMISSIONS
     {
@@ -228,4 +228,258 @@ DEFAULT_QUESTIONS = [
     # VII. SUBMISSION LIMITS
     {
         "id": "limits_submission", 
-        "question": "
+        "question": "20. Page Limits for Written Submissions", 
+        "type": "radio", 
+        "options": [
+            "**Option A: None.** No specific page limits; parties will use reasonable discretion.",
+            "**Option B: Strict.** Strict page limits shall apply (e.g., 50 pages for first round, 25 pages for second round).",
+            "**Option C: Legal Only.** Limits shall apply to the legal argument sections only, excluding witness statements and expert reports."
+        ]
+    },
+    {
+        "id": "ai_guidelines", 
+        "question": "21. Artificial Intelligence Guidelines", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Adopt Guidelines.** The Tribunal should include the CIArb Guidelines on the Use of AI as a guiding text.",
+            "**Option B: None.** No specific guidelines on AI are necessary at this stage."
+        ]
+    },
+
+    # VIII. COMPLEXITY
+    {
+        "id": "consolidation", 
+        "question": "22. Consolidation and Concurrent Conduct", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Stand-Alone.** This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
+            "**Option B: Consolidation.** There are related arbitrations. The parties request Consolidation into a single legal proceeding.",
+            "**Option C: Concurrent Conduct.** There are related arbitrations. The parties request Concurrent Conduct (separate awards, but synchronized timetables)."
+        ]
+    },
+
+    # IX. HEARING MANAGEMENT
+    {
+        "id": "chess_clock", 
+        "question": "23. Time Allocation (Chess Clock)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Chess Clock.** Fixed time allocation (e.g., 50/50 split of total hearing time) which the parties must manage themselves.",
+            "**Option B: Tribunal Discretion.** The Tribunal controls the length of examination for each witness on a case-by-case basis."
+        ]
+    },
+    {
+        "id": "post_hearing", 
+        "question": "24. Post-Hearing Briefs", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Oral Closings Only.** Oral closing arguments only; no post-hearing briefs.",
+            "**Option B: Written Briefs.** Post-hearing written briefs are required (replacing or supplementing oral closings).",
+            "**Option C: Costs Only.** Costs Submissions only (no merits briefing) after the hearing."
+        ]
+    },
+
+    # X. DATA & EXPERTS
+    {
+        "id": "time_shred_docs", 
+        "question": "25. Destruction of Documents (GDPR)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Immediate.** Hard copies should be destroyed/shredded immediately upon issuance of the Final Award.",
+            "**Option B: Retain.** Hard copies should be retained for the applicable limitation period for challenges (e.g., 28 days) and then destroyed."
+        ]
+    },
+    {
+        "id": "expert_meeting", 
+        "question": "26. Meetings of Experts", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Joint Report.** Expert counterparts must meet and produce a Joint Report identifying areas of agreement and disagreement before the hearing.",
+            "**Option B: Independent.** Experts shall submit independent reports only; no pre-hearing meetings or joint reports are required."
+        ]
+    },
+    {
+        "id": "expert_hot_tub", 
+        "question": "27. Mode of Expert Questioning", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Sequential.** Experts will be cross-examined individually, one after the other.",
+            "**Option B: Hot-Tubbing.** Witness Conferencing. Experts from both sides dealing with the same discipline shall give evidence concurrently."
+        ]
+    },
+    {
+        "id": "expert_reply", 
+        "question": "28. Reply Expert Reports", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Simultaneous.** Simultaneous exchange of initial reports, followed by simultaneous exchange of Reply reports.",
+            "**Option B: Sequential.** Sequential exchange (Claimant first, then Respondent), with no Reply reports permitted unless new factual evidence is introduced."
+        ]
+    },
+
+    # XI. AWARD
+    {
+        "id": "sign_award", 
+        "question": "29. Electronic Signatures on Award", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Electronic.** The Parties agree that the Tribunal may sign the Award electronically.",
+            "**Option B: Wet Ink.** The Parties require the Award to be signed in 'wet ink' (hard copy) for enforcement purposes in specific jurisdictions."
+        ]
+    },
+    {
+        "id": "currency", 
+        "question": "30. Currency of the Award", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Contract Currency.** The Award shall be expressed in the currency of the contract/transaction (e.g., USD).",
+            "**Option B: Cost Currency.** The Award shall be expressed in the currency of the costs incurred (e.g., GBP for legal costs, USD for damages).",
+            "**Option C: Tribunal Discretion.** Left to the Tribunal's discretion based on the applicable law."
+        ]
+    },
+    {
+        "id": "interest", 
+        "question": "31. Interest Calculation", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Applicable Law.** The Tribunal shall apply interest rates and methods (simple/compound) prescribed by the applicable substantive law.",
+            "**Option B: Simple Interest.** The Parties agree that any interest awarded shall be simple interest only.",
+            "**Option C: Compound Interest.** The Parties agree that any interest awarded shall be compound interest."
+        ]
+    },
+    {
+        "id": "last_submission", 
+        "question": "32. Definition of 'Last Submission' (3-Month Deadline)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Merits Brief.** The 'Last Submission' triggering the 3-month reporting period is the final Post-Hearing Brief on the merits. (Cost submissions are handled separately/later).",
+            "**Option B: Final Filing.** The 'Last Submission' is the very last filing, including Submissions on Costs."
+        ]
+    },
+
+    # XII. LOGISTICS & PRIVILEGE
+    {
+        "id": "transcription", 
+        "question": "33. Transcription Services", 
+        "type": "selectbox", 
+        "options": [
+            "**Option A: Live / Real-time.** Live / Real-time transcription is required (Parties see the text appear instantly on screens).",
+            "**Option B: Daily Turnaround.** Transcripts provided at the end of each hearing day.",
+            "**Option C: Standard Turnaround.** Transcripts provided 1-2 weeks after the hearing.",
+            "**Option D: None.** No transcription; the Tribunal’s recording/notes shall suffice."
+        ]
+    },
+    {
+        "id": "demonstratives", 
+        "question": "34. Demonstrative Exhibits", 
+        "type": "radio", 
+        "options": [
+            "**Option A: 24 Hours.** Demonstratives must be exchanged in hard copy/email 24 hours before use.",
+            "**Option B: Immediate.** Demonstratives must be exchanged immediately prior to the start of the examination of the relevant witness.",
+            "**Option C: No specific rule.** Demonstratives may be used freely provided they contain no new evidence."
+        ]
+    },
+    {
+        "id": "privilege_std", 
+        "question": "35. Standard of Legal Privilege", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Seat Rules.** The Tribunal shall apply the rules of privilege of the Seat of Arbitration (e.g., English Law).",
+            "**Option B: Closest Connection.** The Tribunal shall apply the rules of privilege of the party claiming the privilege (Most Favored Nation approach).",
+            "**Option C: Strictest.** The Tribunal shall apply the strictest applicable privilege rule among the parties' jurisdictions."
+        ]
+    },
+    {
+        "id": "privilege_logs", 
+        "question": "36. Privilege Logs", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Required.** Parties withholding documents on grounds of privilege must produce a detailed privilege log (Index).",
+            "**Option B: Not Required.** Privilege logs are not required unless the Tribunal specifically orders one following a dispute."
+        ]
+    },
+
+    # XIII. CONTACT INFO (Last)
+    {
+        "id": "reps_info", 
+        "question": "37. Authorised Representatives (Contact Details)", 
+        "type": "text_area", 
+        "options": ["Enter Name, Firm, and Email..."]
+    }
+]
+
+# --- LOAD DATA ---
+current_structure = load_structure()
+if not current_structure:
+    current_structure = DEFAULT_QUESTIONS
+
+# --- ADD CUSTOM QUESTION ---
+if st.button("➕ Add New Question", type="primary"):
+    new_id = f"custom_{int(time.time())}"
+    # Default 'next' number logic
+    try:
+        last_q_text = current_structure[-1]['question']
+        last_num = int(last_q_text.split(".")[0])
+        next_num = last_num + 1
+    except:
+        next_num = len(current_structure) + 1
+        
+    new_q = {
+        "id": new_id,
+        "question": f"{next_num}. New Question",
+        "type": "radio",
+        "options": ["**Option A:** Choice 1", "**Option B:** Choice 2"]
+    }
+    current_structure.append(new_q)
+    save_structure(current_structure)
+    st.rerun()
+
+# --- EDITOR UI ---
+with st.form("editor_form"):
+    updated_structure = []
+    st.markdown("### Questions Configuration")
+    
+    for i, q in enumerate(current_structure):
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([6, 2, 1])
+            
+            # Question Text
+            new_q_text = c1.text_input(f"Question #{i+1}", value=q['question'], key=f"q_{i}")
+            
+            # Type Selector
+            type_map = {"radio": "List (Radio)", "selectbox": "Dropdown", "text_area": "Text Input"}
+            rev_map = {"List (Radio)": "radio", "Dropdown": "selectbox", "Text Input": "text_area"}
+            curr_type = type_map.get(q['type'], "List (Radio)")
+            new_type_disp = c2.selectbox("Type", ["List (Radio)", "Dropdown", "Text Input"], index=["List (Radio)", "Dropdown", "Text Input"].index(curr_type), key=f"t_{i}")
+            new_type = rev_map[new_type_disp]
+            
+            # Include Toggle
+            is_included = c3.checkbox("Include", value=True, key=f"inc_{i}")
+            
+            # Options (SEPARATE EDIT BOXES FOR EACH OPTION)
+            new_options = []
+            if new_type != "text_area":
+                st.write("**Options:**")
+                existing_opts = q.get('options', [])
+                
+                # Render a text input for EACH option individually
+                for idx, opt_text in enumerate(existing_opts):
+                    val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
+                    new_options.append(val)
+                
+                # Add default blank slots if fewer than 2 options (for new questions)
+                if len(new_options) < 2:
+                    for j in range(len(new_options), 2):
+                        val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
+                        new_options.append(val)
+            else:
+                new_options = ["Text Input"]
+
+            if is_included:
+                updated_structure.append({
+                    "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
+                })
+    
+    if st.form_submit_button("💾 Publish to Parties", type="primary"):
+        save_structure(updated_structure)
+        st.success(f"Published {len(updated_structure)} questions.")
