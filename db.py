@@ -61,3 +61,14 @@ def load_timeline():
 def save_timeline(data):
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}"
     requests.put(url, json=data, headers=HEADERS)
+
+# --- 4. SYSTEM RESET (NEW) ---
+def reset_database():
+    """Wipes Responses and Timeline, Resets Structure to Default"""
+    # 1. Clear Responses
+    save_responses({"claimant": {}, "respondent": {}})
+    # 2. Clear Timeline
+    save_timeline([])
+    # 3. Structure is usually kept, but you can pass None to force reload defaults next time
+    # save_structure({"initial_setup": True}) 
+    return True
