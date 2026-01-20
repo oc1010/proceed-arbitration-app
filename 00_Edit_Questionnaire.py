@@ -7,7 +7,7 @@ if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (Links back to Home) ---
 with st.sidebar:
     st.write(f"User: **{st.session_state['user_role'].upper()}**")
     st.divider()
