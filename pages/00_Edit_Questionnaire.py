@@ -471,7 +471,7 @@ with st.form("editor_form"):
                     val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
                     new_options.append(val)
                 
-                # Default blank slots for custom questions with few options
+                # Add default blank slots if fewer than 2 options (for new questions)
                 if len(new_options) < 2:
                     for j in range(len(new_options), 2):
                         val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
