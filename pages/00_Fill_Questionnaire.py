@@ -37,38 +37,45 @@ with st.form("party_form"):
     for q in structure:
         st.markdown(f"### {q['question']}")
         
+        # 1. Main Answer
         curr_val = my_responses.get(q['id'], "")
         
-        # TEXT INPUT HANDLING
         if q['type'] == "text_area":
+            # Text Input Handling
             val = st.text_area("Your Answer:", value=curr_val, key=q['id'])
             new_responses[q['id']] = val
-            st.divider()
-            continue
-
-        # Determine Index
-        is_custom = curr_val not in q['options'] and curr_val != ""
-        if is_custom and "Other" in q['options']: list_index = q['options'].index("Other")
-        elif curr_val in q['options']: list_index = q['options'].index(curr_val)
-        else: list_index = 0
-
-        if q['type'] == "radio":
-            selection = st.radio(
-                "Select one:", 
-                q['options'], 
-                index=list_index, 
-                key=f"rad_{q['id']}"
-            )
         else:
-            selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}")
+            # List/Radio Handling
+            # Determine previous index if exists
+            is_custom = curr_val not in q['options'] and curr_val != ""
+            if is_custom and "Other" in q['options']: list_index = q['options'].index("Other")
+            elif curr_val in q['options']: list_index = q['options'].index(curr_val)
+            else: list_index = 0
+
+            if q['type'] == "radio":
+                selection = st.radio(
+                    "Select one:", 
+                    q['options'], 
+                    index=list_index, 
+                    key=f"rad_{q['id']}"
+                )
+            else:
+                selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}")
+            
+            final_answer = selection
+            if selection == "Other":
+                default_text = curr_val if is_custom else ""
+                custom_input = st.text_input("Please specify:", value=default_text, key=f"other_{q['id']}")
+                if custom_input: final_answer = custom_input
+            
+            new_responses[q['id']] = final_answer
         
-        final_answer = selection
-        if selection == "Other":
-            default_text = curr_val if is_custom else ""
-            custom_input = st.text_input("Please specify:", value=default_text, key=f"other_{q['id']}")
-            if custom_input: final_answer = custom_input
+        # 2. Additional Comment (Crucial Addition)
+        comment_key = f"{q['id']}_comment"
+        curr_comment = my_responses.get(comment_key, "")
+        comment = st.text_area("Additional Comments (Optional):", value=curr_comment, key=f"comment_{q['id']}", height=68)
+        new_responses[comment_key] = comment
         
-        new_responses[q['id']] = final_answer
         st.markdown("---")
         
     if st.form_submit_button("Submit Responses", type="primary"):
