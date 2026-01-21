@@ -70,14 +70,59 @@ context = {
 for i in range(1, 16):
     context[f"deadline_{i:02d}"] = "TBD"
 
+# --- TOPIC MAP (Expanded for Clarity) ---
+# This maps the internal IDs to the full Question Title for the Hints
+TOPIC_MAP = {
+    "style": "1. Style of Written Submissions", 
+    "bifurcation": "2. Bifurcation of Proceedings", 
+    "doc_prod": "3. Applicable Guidelines (Evidence)", 
+    "limits": "4. Limitations on Document Requests", 
+    "witness_exam": "5. Witness Examination", 
+    "platform": "6. Case Management Platform", 
+    "bundling": "7. Electronic Bundling", 
+    "gdpr": "8. Data Protection (GDPR)", 
+    "cost_allocation": "9. Cost Allocation Methodology", 
+    "counsel_fees": "10. Counsel Fees (Recoverability)", 
+    "internal_costs": "11. Internal Management Costs", 
+    "deposits": "12. Administrative Deposits", 
+    "secretary": "13. Tribunal Secretary", 
+    "sec_fees": "14. Tribunal Secretary Fees", 
+    "extensions": "15. Protocol for Time Extensions", 
+    "funding": "16. Third-Party Funding", 
+    "deadline_timezone": "17. Definition of 'Deadline'", 
+    "physical_venue_preference": "18. Physical Hearing Venue Preference", 
+    "interpretation": "19. Interpretation and Translation", 
+    "limits_submission": "20. Page Limits for Written Submissions", 
+    "ai_guidelines": "21. Artificial Intelligence Guidelines", 
+    "consolidation": "22. Consolidation and Concurrent Conduct", 
+    "chess_clock": "23. Time Allocation (Chess Clock)", 
+    "post_hearing": "24. Post-Hearing Briefs", 
+    "time_shred_docs": "25. Destruction of Documents", 
+    "expert_meeting": "26. Meetings of Experts", 
+    "expert_hot_tub": "27. Mode of Expert Questioning", 
+    "expert_reply": "28. Reply Expert Reports", 
+    "sign_award": "29. Electronic Signatures on Award", 
+    "currency": "30. Currency of the Award", 
+    "interest": "31. Interest Calculation", 
+    "last_submission": "32. Definition of 'Last Submission'", 
+    "transcription": "33. Transcription Services", 
+    "demonstratives": "34. Demonstrative Exhibits", 
+    "privilege_std": "35. Standard of Legal Privilege", 
+    "privilege_logs": "36. Privilege Logs", 
+    "reps_info": "16. Authorised Representatives"
+}
+
 responses = load_responses()
 
 def display_hint(key):
     """
-    Shows a small colored box indicating if parties agree or conflict on a specific issue.
+    Shows a comprehensive box with the Question Title, Agreement Status, and Specific Answers.
     """
     c = responses.get('claimant', {}).get(key, "Pending")
     r = responses.get('respondent', {}).get(key, "Pending")
+    
+    # Get the human-readable Question Title
+    topic_title = TOPIC_MAP.get(key, key)
     
     # Helper to clean the displayed hint text (remove bolding/long descriptions)
     def clean_hint(txt):
@@ -92,9 +137,9 @@ def display_hint(key):
     if c == "Pending" and r == "Pending": 
         st.info("Waiting for parties...", icon="⏳")
     elif c == r: 
-        st.success(f"Agreed: {c_clean}", icon="✅")
+        st.success(f"**{topic_title}**\n\n✅ **Agreed:** {c_clean}", icon="✅")
     else: 
-        st.warning(f"Conflict: Claimant '{c_clean}' vs Respondent '{r_clean}'", icon="⚠️")
+        st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
 def save_schedule(dates, style):
     """
@@ -135,7 +180,7 @@ with tabs[0]:
         c_data = responses.get('claimant', {})
         r_data = responses.get('respondent', {})
         
-        # Load the question structure to map IDs to Real Question Text
+        # Load structure to get dynamic question titles (if customized)
         structure = load_structure()
         dynamic_map = {}
         if structure:
@@ -151,15 +196,15 @@ with tabs[0]:
             summary_data = []
             # Sort keys based on their numeric prefix
             def sort_key(k):
-                text = dynamic_map.get(k, k)
+                text = dynamic_map.get(k, TOPIC_MAP.get(k, k))
                 try:
                     return int(text.split(".")[0])
                 except:
                     return 999
             
             for k in sorted(all_keys, key=sort_key):
-                # Get Readable Question Title
-                topic = dynamic_map.get(k, k)
+                # Prefer dynamic map (if user edited Q), fallback to hardcoded map
+                topic = dynamic_map.get(k, TOPIC_MAP.get(k, k))
                 
                 c_val = c_data.get(k, "Pending")
                 r_val = r_data.get(k, "Pending")
@@ -203,7 +248,7 @@ with tabs[0]:
                     
                     if c_comm or r_comm:
                         found_comments = True
-                        st.markdown(f"**{dynamic_map.get(k, k)}**")
+                        st.markdown(f"**{dynamic_map.get(k, TOPIC_MAP.get(k, k))}**")
                         if c_comm: 
                             st.info(f"**Claimant:** {c_comm}", icon="🔵")
                         if r_comm: 
