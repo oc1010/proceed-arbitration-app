@@ -33,9 +33,9 @@ with st.sidebar:
 st.title("✏️ Questionnaire Editor")
 st.caption("Customize the questions. Uncheck 'Include' to remove a question. Click 'Add New' to create your own.")
 
-# --- MASTER QUESTION BANK ---
+# --- MASTER QUESTION BANK (EXACT TEXT FROM DOCX) ---
 DEFAULT_QUESTIONS = [
-    # I. WRITTEN SUBMISSIONS
+    # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
     {
         "id": "style", 
         "question": "1. Style of Written Submissions", 
@@ -58,13 +58,13 @@ DEFAULT_QUESTIONS = [
     # II. DOCUMENT PRODUCTION & EVIDENCE
     {
         "id": "doc_prod", 
-        "question": "3. Applicable Guidelines (Evidence)", 
+        "question": "3. Applicable Guidelines", 
         "type": "selectbox", 
         "options": [
             "**Option A: IBA Rules (Binding).** The IBA Rules on the Taking of Evidence (2020) shall apply as binding rules.",
             "**Option B: IBA Rules (Guidelines).** The Tribunal shall be guided by the IBA Rules (2020) but they shall not be binding.",
-            "**Option C: None.** No specific guidelines; the Tribunal shall apply the general evidentiary powers under the LCIA Rules.",
-            "**Option D: Other.** (e.g. Prague Rules). Please specify in next steps."
+            "**Option C: No specific guidelines.** The Tribunal shall apply the general evidentiary powers under the LCIA Rules.",
+            "**Option D: Other.** (e.g., The Prague Rules, CIArb Guidelines). Please specify in the comments."
         ]
     },
     {
@@ -88,7 +88,7 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # III. ELECTRONIC PROTOCOLS
+    # III. ELECTRONIC PROTOCOLS & DATA PROTECTION
     {
         "id": "platform", 
         "question": "6. Case Management Platform", 
@@ -156,7 +156,7 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # V. TRIBUNAL ASSISTANCE
+    # V. TRIBUNAL ASSISTANCE & LOGISTICS
     {
         "id": "secretary", 
         "question": "13. Tribunal Secretary", 
@@ -168,7 +168,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "sec_fees", 
-        "question": "14. Tribunal Secretary Fees", 
+        "question": "14. Tribunal Secretary Fees (if Option A selected)", 
         "type": "radio", 
         "options": [
             "**Option A: Standard LCIA (£75 - £175 / hr).** Hourly rate between £75 to £175 (per standard LCIA Schedule of Costs).",
@@ -182,23 +182,31 @@ DEFAULT_QUESTIONS = [
         "options": [
             "**Option A: Standard.** Extensions may be granted by the Tribunal upon a reasoned request showing good cause.",
             "**Option B: Strict.** Extensions granted only in 'exceptional circumstances'.",
-            "**Option C: Flexible.** Short extensions (e.g., up to 3 days) may be agreed between parties without Tribunal intervention."
+            "**Option C: Flexible.** Short extensions (e.g., up to 3 days) may be agreed between parties without Tribunal intervention, provided the hearing date is not jeopardized."
         ]
     },
 
-    # VI. HEARING & TIMING
+    # VI. PARTY & COUNSEL DETAILS
+    {
+        "id": "reps_info", 
+        "question": "16. Authorised Representatives (LCIA Art. 18)", 
+        "type": "text_area", 
+        "options": ["Enter Lead Counsel Name, Email, Firm..."]
+    },
     {
         "id": "funding", 
-        "question": "16. Third-Party Funding", 
+        "question": "17. Third-Party Funding", 
         "type": "radio", 
         "options": [
             "**Option A: None.** No third-party funding is currently in place.",
-            "**Option B: Exists.** Third-party funding is in place. (Please disclose the identity of the funder immediately)."
+            "**Option B: Exists.** Third-party funding is in place. (Please disclose the identity of the funder immediately to comply with conflict check requirements)."
         ]
     },
+
+    # VII. HEARING LOGISTICS & TIMING
     {
         "id": "deadline_timezone", 
-        "question": "17. Definition of 'Deadline' (Timezone)", 
+        "question": "18. Definition of 'Deadline' (Timezone)", 
         "type": "radio", 
         "options": [
             "**Option A: Time of the Seat.** Time of the Seat of Arbitration (e.g., 17:00 London time).",
@@ -208,7 +216,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "physical_venue_preference", 
-        "question": "18. Physical Hearing Venue Preference", 
+        "question": "19. Physical Hearing Venue", 
         "type": "radio", 
         "options": [
             "**Option A: At Seat.** The hearings shall take place physically at the Seat of Arbitration.",
@@ -217,7 +225,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "interpretation", 
-        "question": "19. Interpretation and Translation", 
+        "question": "20. Interpretation and Translation", 
         "type": "radio", 
         "options": [
             "**Option A: English Only.** The proceedings will be conducted entirely in English; no interpretation is anticipated.",
@@ -225,10 +233,10 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # VII. SUBMISSION LIMITS
+    # VIII. LIMITS ON SUBMISSIONS
     {
         "id": "limits_submission", 
-        "question": "20. Page Limits for Written Submissions", 
+        "question": "21. Page Limits for Written Submissions", 
         "type": "radio", 
         "options": [
             "**Option A: None.** No specific page limits; parties will use reasonable discretion.",
@@ -238,30 +246,30 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "ai_guidelines", 
-        "question": "21. Artificial Intelligence Guidelines", 
+        "question": "22. Artificial Intelligence Guidelines", 
         "type": "radio", 
         "options": [
-            "**Option A: Adopt Guidelines.** The Tribunal should include the CIArb Guidelines on the Use of AI as a guiding text.",
+            "**Option A: Adopt Guidelines.** The Tribunal should include the CIArb Guidelines on the Use of AI as a guiding text for the Parties' use of technology.",
             "**Option B: None.** No specific guidelines on AI are necessary at this stage."
         ]
     },
 
-    # VIII. COMPLEXITY
+    # IX. COMPLEXITY & CONSOLIDATION
     {
         "id": "consolidation", 
-        "question": "22. Consolidation and Concurrent Conduct", 
+        "question": "23. Consolidation and Concurrent Conduct", 
         "type": "radio", 
         "options": [
             "**Option A: Stand-Alone.** This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
-            "**Option B: Consolidation.** There are related arbitrations. The parties request Consolidation into a single legal proceeding.",
-            "**Option C: Concurrent Conduct.** There are related arbitrations. The parties request Concurrent Conduct (separate awards, but synchronized timetables)."
+            "**Option B: Consolidation.** There are related arbitrations between the parties. The parties request Consolidation into a single legal proceeding.",
+            "**Option C: Concurrent Conduct.** There are related arbitrations. The parties request Concurrent Conduct (separate awards, but synchronized timetables and hearings) pursuant to Article 22.7(iii)."
         ]
     },
 
-    # IX. HEARING MANAGEMENT
+    # X. HEARING MANAGEMENT
     {
         "id": "chess_clock", 
-        "question": "23. Time Allocation (Chess Clock)", 
+        "question": "24. Time Allocation at Hearing", 
         "type": "radio", 
         "options": [
             "**Option A: Chess Clock.** Fixed time allocation (e.g., 50/50 split of total hearing time) which the parties must manage themselves.",
@@ -270,7 +278,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "post_hearing", 
-        "question": "24. Post-Hearing Briefs", 
+        "question": "25. Post-Hearing Briefs", 
         "type": "radio", 
         "options": [
             "**Option A: Oral Closings Only.** Oral closing arguments only; no post-hearing briefs.",
@@ -279,19 +287,21 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # X. DATA & EXPERTS
+    # XI. DATA RETENTION
     {
         "id": "time_shred_docs", 
-        "question": "25. Destruction of Documents (GDPR)", 
+        "question": "26. Destruction of Documents", 
         "type": "radio", 
         "options": [
             "**Option A: Immediate.** Hard copies should be destroyed/shredded immediately upon issuance of the Final Award.",
-            "**Option B: Retain.** Hard copies should be retained for the applicable limitation period for challenges (e.g., 28 days) and then destroyed."
+            "**Option B: Retain.** Hard copies should be retained for the applicable limitation period for challenges (e.g., 28 days under LCIA Art 27) and then destroyed."
         ]
     },
+
+    # XII. EXPERT EVIDENCE PROTOCOLS
     {
         "id": "expert_meeting", 
-        "question": "26. Meetings of Experts", 
+        "question": "27. Meetings of Experts & Joint Reports", 
         "type": "radio", 
         "options": [
             "**Option A: Joint Report.** Expert counterparts must meet and produce a Joint Report identifying areas of agreement and disagreement before the hearing.",
@@ -300,16 +310,16 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "expert_hot_tub", 
-        "question": "27. Mode of Expert Questioning", 
+        "question": "28. Mode of Expert Questioning ('Hot-Tubbing')", 
         "type": "radio", 
         "options": [
-            "**Option A: Sequential.** Experts will be cross-examined individually, one after the other.",
-            "**Option B: Hot-Tubbing.** Witness Conferencing. Experts from both sides dealing with the same discipline shall give evidence concurrently."
+            "**Option A: Sequential.** Sequential Examination. Experts will be cross-examined individually, one after the other.",
+            "**Option B: Hot-Tubbing.** Witness Conferencing. Experts from both sides dealing with the same discipline shall give evidence concurrently and may debate issues directly with each other and the Tribunal."
         ]
     },
     {
         "id": "expert_reply", 
-        "question": "28. Reply Expert Reports", 
+        "question": "29. Reply Expert Reports", 
         "type": "radio", 
         "options": [
             "**Option A: Simultaneous.** Simultaneous exchange of initial reports, followed by simultaneous exchange of Reply reports.",
@@ -317,10 +327,10 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # XI. AWARD
+    # XIII. AWARD SPECIFICS
     {
         "id": "sign_award", 
-        "question": "29. Electronic Signatures on Award", 
+        "question": "30. Electronic Signatures on the Award", 
         "type": "radio", 
         "options": [
             "**Option A: Electronic.** The Parties agree that the Tribunal may sign the Award electronically.",
@@ -329,7 +339,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "currency", 
-        "question": "30. Currency of the Award", 
+        "question": "31. Currency of the Award", 
         "type": "radio", 
         "options": [
             "**Option A: Contract Currency.** The Award shall be expressed in the currency of the contract/transaction (e.g., USD).",
@@ -339,7 +349,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "interest", 
-        "question": "31. Interest Calculation", 
+        "question": "32. Interest Calculation", 
         "type": "radio", 
         "options": [
             "**Option A: Applicable Law.** The Tribunal shall apply interest rates and methods (simple/compound) prescribed by the applicable substantive law.",
@@ -349,7 +359,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "last_submission", 
-        "question": "32. Definition of 'Last Submission' (3-Month Deadline)", 
+        "question": "33. Definition of 'Last Submission'", 
         "type": "radio", 
         "options": [
             "**Option A: Merits Brief.** The 'Last Submission' triggering the 3-month reporting period is the final Post-Hearing Brief on the merits. (Cost submissions are handled separately/later).",
@@ -357,10 +367,10 @@ DEFAULT_QUESTIONS = [
         ]
     },
 
-    # XII. LOGISTICS & PRIVILEGE
+    # XIV. HEARING LOGISTICS & TRANSCRIPTS
     {
         "id": "transcription", 
-        "question": "33. Transcription Services", 
+        "question": "34. Transcription Services", 
         "type": "selectbox", 
         "options": [
             "**Option A: Live / Real-time.** Live / Real-time transcription is required (Parties see the text appear instantly on screens).",
@@ -371,7 +381,7 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "demonstratives", 
-        "question": "34. Demonstrative Exhibits", 
+        "question": "35. Demonstrative Exhibits", 
         "type": "radio", 
         "options": [
             "**Option A: 24 Hours.** Demonstratives must be exchanged in hard copy/email 24 hours before use.",
@@ -379,9 +389,11 @@ DEFAULT_QUESTIONS = [
             "**Option C: No specific rule.** Demonstratives may be used freely provided they contain no new evidence."
         ]
     },
+
+    # XV. PRIVILEGE & DOCUMENT PRODUCTION
     {
         "id": "privilege_std", 
-        "question": "35. Standard of Legal Privilege", 
+        "question": "36. Standard of Legal Privilege", 
         "type": "radio", 
         "options": [
             "**Option A: Seat Rules.** The Tribunal shall apply the rules of privilege of the Seat of Arbitration (e.g., English Law).",
@@ -391,20 +403,12 @@ DEFAULT_QUESTIONS = [
     },
     {
         "id": "privilege_logs", 
-        "question": "36. Privilege Logs", 
+        "question": "37. Privilege Logs", 
         "type": "radio", 
         "options": [
-            "**Option A: Required.** Parties withholding documents on grounds of privilege must produce a detailed privilege log (Index).",
+            "**Option A: Required.** Parties withholding documents on grounds of privilege must produce a detailed privilege log (Index) describing the document and the basis for privilege.",
             "**Option B: Not Required.** Privilege logs are not required unless the Tribunal specifically orders one following a dispute."
         ]
-    },
-
-    # XIII. CONTACT INFO (Last)
-    {
-        "id": "reps_info", 
-        "question": "37. Authorised Representatives (Contact Details)", 
-        "type": "text_area", 
-        "options": ["Enter Name, Firm, and Email..."]
     }
 ]
 
@@ -467,7 +471,7 @@ with st.form("editor_form"):
                     val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
                     new_options.append(val)
                 
-                # Add default blank slots if fewer than 2 options (for new questions)
+                # Default blank slots for custom questions with few options
                 if len(new_options) < 2:
                     for j in range(len(new_options), 2):
                         val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
