@@ -35,9 +35,10 @@ with st.form("party_form"):
     new_responses = {}
     
     for q in structure:
+        # Display the Question in Bold
         st.markdown(f"### {q['question']}")
         
-        # 1. Main Answer
+        # 1. Main Answer Input
         curr_val = my_responses.get(q['id'], "")
         
         if q['type'] == "text_area":
@@ -52,6 +53,7 @@ with st.form("party_form"):
             elif curr_val in q['options']: list_index = q['options'].index(curr_val)
             else: list_index = 0
 
+            # Render Radio or Selectbox
             if q['type'] == "radio":
                 selection = st.radio(
                     "Select one:", 
@@ -63,6 +65,8 @@ with st.form("party_form"):
                 selection = st.selectbox("Select:", q['options'], index=list_index, key=f"sel_{q['id']}")
             
             final_answer = selection
+            
+            # Handle "Other" selection with a custom input box
             if selection == "Other":
                 default_text = curr_val if is_custom else ""
                 custom_input = st.text_input("Please specify:", value=default_text, key=f"other_{q['id']}")
@@ -70,11 +74,22 @@ with st.form("party_form"):
             
             new_responses[q['id']] = final_answer
         
-        # 2. Additional Comment (Crucial Addition)
+        # 2. Additional Comment Field (NEW FEATURE)
+        # Unique key for comment: "questionID_comment"
         comment_key = f"{q['id']}_comment"
         curr_comment = my_responses.get(comment_key, "")
-        comment = st.text_area("Additional Comments (Optional):", value=curr_comment, key=f"comment_{q['id']}", height=68)
-        new_responses[comment_key] = comment
+        
+        # Added styling for clarity
+        st.caption("Optional: Provide reasoning or additional details.")
+        comment_val = st.text_area(
+            "Comments:", 
+            value=curr_comment, 
+            key=f"comment_{q['id']}", 
+            height=68, 
+            label_visibility="collapsed",
+            placeholder="Add comments here..."
+        )
+        new_responses[comment_key] = comment_val
         
         st.markdown("---")
         
