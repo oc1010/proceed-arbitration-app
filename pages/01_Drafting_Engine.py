@@ -178,7 +178,7 @@ with tabs[0]:
                 c_clean = clean_val(c_val)
                 r_clean = clean_val(r_val)
                 
-                # Append comment hint if present
+                # Append comment hint icon if present
                 if c_comm: c_clean += " 💬"
                 if r_comm: r_clean += " 💬"
                 
@@ -194,15 +194,24 @@ with tabs[0]:
             st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
             
             # --- DETAILED COMMENTS VIEW ---
-            with st.expander("🔎 View Party Comments"):
+            st.markdown("### 💬 Party Comments")
+            with st.expander("Click to view detailed comments from the parties"):
+                found_comments = False
                 for k in sorted(all_keys, key=sort_key):
                     c_comm = c_data.get(f"{k}_comment", "")
                     r_comm = r_data.get(f"{k}_comment", "")
+                    
                     if c_comm or r_comm:
+                        found_comments = True
                         st.markdown(f"**{dynamic_map.get(k, k)}**")
-                        if c_comm: st.info(f"**Claimant:** {c_comm}")
-                        if r_comm: st.warning(f"**Respondent:** {r_comm}")
+                        if c_comm: 
+                            st.info(f"**Claimant:** {c_comm}", icon="🔵")
+                        if r_comm: 
+                            st.warning(f"**Respondent:** {r_comm}", icon="🟠")
                         st.divider()
+                
+                if not found_comments:
+                    st.write("No additional comments provided by the parties.")
             
     except Exception as e:
         st.error(f"Error loading summary table: {e}")
