@@ -142,7 +142,8 @@ with tabs[0]:
             for q in structure:
                 dynamic_map[q['id']] = q['question']
         
-        all_keys = list(set(list(c_data.keys()) + list(r_data.keys())))
+        # Filter keys: only actual questions, not the comment keys
+        all_keys = [k for k in list(set(list(c_data.keys()) + list(r_data.keys()))) if not k.endswith("_comment")]
         
         if not all_keys:
             st.info("No data submitted yet.")
@@ -163,6 +164,10 @@ with tabs[0]:
                 c_val = c_data.get(k, "Pending")
                 r_val = r_data.get(k, "Pending")
                 
+                # Fetch Comments
+                c_comm = c_data.get(f"{k}_comment", "")
+                r_comm = r_data.get(f"{k}_comment", "")
+                
                 # CLEANER: Extract only the bold title "Option A: Style"
                 def clean_val(v):
                     if "**" in v:
@@ -172,6 +177,10 @@ with tabs[0]:
                 
                 c_clean = clean_val(c_val)
                 r_clean = clean_val(r_val)
+                
+                # Append comment hint if present
+                if c_comm: c_clean += " 💬"
+                if r_comm: r_clean += " 💬"
                 
                 match = "✅" if c_val == r_val and c_val != "Pending" else "❌"
                 
@@ -183,6 +192,17 @@ with tabs[0]:
                 })
             
             st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
+            
+            # --- DETAILED COMMENTS VIEW ---
+            with st.expander("🔎 View Party Comments"):
+                for k in sorted(all_keys, key=sort_key):
+                    c_comm = c_data.get(f"{k}_comment", "")
+                    r_comm = r_data.get(f"{k}_comment", "")
+                    if c_comm or r_comm:
+                        st.markdown(f"**{dynamic_map.get(k, k)}**")
+                        if c_comm: st.info(f"**Claimant:** {c_comm}")
+                        if r_comm: st.warning(f"**Respondent:** {r_comm}")
+                        st.divider()
             
     except Exception as e:
         st.error(f"Error loading summary table: {e}")
