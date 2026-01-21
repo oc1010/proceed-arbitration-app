@@ -35,7 +35,6 @@ with st.form("party_form"):
     new_responses = {}
     
     for q in structure:
-        # Display the Question in Bold
         st.markdown(f"### {q['question']}")
         
         # 1. Main Answer Input
@@ -74,12 +73,10 @@ with st.form("party_form"):
             
             new_responses[q['id']] = final_answer
         
-        # 2. Additional Comment Field (NEW FEATURE)
-        # Unique key for comment: "questionID_comment"
+        # 2. Additional Comment Field
         comment_key = f"{q['id']}_comment"
         curr_comment = my_responses.get(comment_key, "")
         
-        # Added styling for clarity
         st.caption("Optional: Provide reasoning or additional details.")
         comment_val = st.text_area(
             "Comments:", 
