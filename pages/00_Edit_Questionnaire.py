@@ -33,7 +33,7 @@ with st.sidebar:
 st.title("✏️ Questionnaire Editor")
 st.caption("Customize the questions. Uncheck 'Include' to remove a question. Click 'Add New' to create your own.")
 
-# --- MASTER QUESTION BANK (EXACT TEXT FROM DOCX) ---
+# --- MASTER QUESTION BANK ---
 DEFAULT_QUESTIONS = [
     # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
     {
