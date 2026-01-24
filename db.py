@@ -13,55 +13,79 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- 1. STRUCTURE (Cached) ---
-# ttl=600 means "remember this for 10 minutes" (or until cleared)
-@st.cache_data(ttl=600)
-def load_structure():
+# --- 1. STRUCTURE & STATUS (Questions + Release Flags) ---
+@st.cache_data(ttl=60)
+def load_full_config():
+    """Loads the entire configuration object (questions + status flags)."""
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record', resp.json())
-            if "initial_setup" in data: return None
-            return data
+            return resp.json().get('record', {})
     except: pass
-    return None
+    return {}
 
-def save_structure(data):
-    url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}"
-    requests.put(url, json=data, headers=HEADERS)
-    load_structure.clear() # Clear cache so next load gets new data
+def load_structure(phase="phase2"):
+    data = load_full_config()
+    return data.get(phase, [])
 
-# --- 2. RESPONSES (Cached) ---
-# ttl=2 means "refresh every 2 seconds" (fast enough for real-time, slow enough to stop lag)
+def get_release_status():
+    """Returns dictionary of release flags."""
+    data = load_full_config()
+    return {
+        "phase1": data.get("phase1_released", False),
+        "phase2": data.get("phase2_released", False)
+    }
+
+def save_structure(new_questions, phase="phase2"):
+    """Saves questions without changing release status."""
+    current_data = load_full_config()
+    current_data[phase] = new_questions
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
+    load_full_config.clear()
+
+def set_release_status(phase, status=True):
+    """Updates just the release flag (e.g. releasing Phase 2 to parties)."""
+    current_data = load_full_config()
+    current_data[f"{phase}_released"] = status
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
+    load_full_config.clear()
+
+# --- 2. RESPONSES ---
 @st.cache_data(ttl=2)
-def load_responses():
+def load_responses(phase="phase2"):
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record', resp.json())
+            data = resp.json().get('record', {})
             if "initial_setup" in data: return {"claimant": {}, "respondent": {}}
-            return data
+            return data.get(phase, {"claimant": {}, "respondent": {}})
     except: pass
     return {"claimant": {}, "respondent": {}}
 
-def save_responses(data):
-    url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}"
-    requests.put(url, json=data, headers=HEADERS)
+def save_responses(new_phase_data, phase="phase2"):
+    url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
+    try:
+        resp = requests.get(url, headers=HEADERS)
+        current_full_data = resp.json().get('record', {})
+    except: 
+        current_full_data = {}
+    
+    current_full_data[phase] = new_phase_data
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json=current_full_data, headers=HEADERS)
     load_responses.clear()
 
-# --- 3. TIMELINE (Cached) ---
+# --- 3. TIMELINE ---
 @st.cache_data(ttl=5)
 def load_timeline():
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record', resp.json())
+            data = resp.json().get('record', [])
             if isinstance(data, list):
                 return [x for x in data if "initial_setup" not in x]
-            return []
     except: pass
     return []
 
@@ -72,10 +96,10 @@ def save_timeline(data):
 
 # --- 4. RESET ---
 def reset_database():
-    save_responses({"initial_setup": True})
-    save_timeline([{"initial_setup": True}])
-    save_structure({"initial_setup": True}) 
-    load_structure.clear()
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=[{"initial_setup": True}], headers=HEADERS)
+    load_full_config.clear()
     load_responses.clear()
     load_timeline.clear()
     return True
