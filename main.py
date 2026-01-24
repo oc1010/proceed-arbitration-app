@@ -52,10 +52,10 @@ with st.sidebar:
     
     if role == 'lcia':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Tribunal Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
     elif role == 'arbitrator':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Hearing Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
         st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
         st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
     else:
@@ -70,16 +70,16 @@ role = st.session_state['user_role']
 if role == 'lcia':
     st.info("Logged in as: LCIA Institution")
     
-    # EDITING SECTION
+    # 1. EDITING
     with st.container(border=True):
-        st.markdown("### 1. Configure Phase 1")
-        st.write("Edit and publish the **Pre-Tribunal Appointment Questionnaire**.")
+        st.markdown("### 1. Phase 1: Pre-Tribunal Appointment")
+        st.write("Edit and release the initial questionnaire to the parties.")
         if st.button("Edit Questionnaire"): st.switch_page("pages/00_Edit_Questionnaire.py")
 
-    # VIEWING SECTION (LCIA Access to Phase 1)
+    # 2. VIEWING RESPONSES
     st.divider()
-    st.markdown("### 2. Party Responses (Phase 1)")
-    with st.expander("🔎 View Pre-Tribunal Responses", expanded=True):
+    st.markdown("### 2. Monitor Responses")
+    with st.expander("🔎 View Phase 1 Responses (Pre-Tribunal)", expanded=True):
         p1_resp = load_responses("phase1")
         c_data = p1_resp.get('claimant', {})
         r_data = p1_resp.get('respondent', {})
@@ -87,9 +87,7 @@ if role == 'lcia':
         if not c_data and not r_data:
             st.warning("No responses submitted yet.")
         else:
-            # Simple table for LCIA
             all_keys = list(set(list(c_data.keys()) + list(r_data.keys())))
-            # Filter out comments
             q_keys = [k for k in all_keys if not k.endswith("_comment")]
             
             data = []
@@ -103,6 +101,20 @@ if role == 'lcia':
 
 elif role == 'arbitrator':
     st.info("Logged in as: Arbitral Tribunal")
+    
+    # 1. REVIEW PHASE 1
+    with st.expander("📄 Review Pre-Tribunal Questionnaire (Phase 1)"):
+        p1_resp = load_responses("phase1")
+        c_data = p1_resp.get('claimant', {})
+        r_data = p1_resp.get('respondent', {})
+        if not c_data and not r_data:
+            st.warning("Parties have not submitted Phase 1 yet.")
+        else:
+            st.write("Responses received from parties prior to your appointment:")
+            # Simple view
+            df_p1 = pd.DataFrame([c_data, r_data], index=["Claimant", "Respondent"]).T
+            st.dataframe(df_p1)
+
     c1, c2, c3 = st.columns(3)
     with c1:
         with st.container(border=True):
@@ -112,14 +124,14 @@ elif role == 'arbitrator':
     with c2:
         with st.container(border=True):
             st.markdown("### Drafting Engine")
-            st.write("View Responses & Draft Order.")
+            st.write("Generate Procedural Order No. 1.")
             if st.button("Open Engine"): st.switch_page("pages/01_Drafting_Engine.py")
             
 elif role in ['claimant', 'respondent']:
     st.info(f"Welcome, Counsel for {role.title()}.")
-    st.markdown("### Pending Tasks")
+    st.markdown("### Active Tasks")
     with st.container(border=True):
         st.markdown("#### Procedural Questionnaires")
-        st.write("Complete pending procedural questionnaires.")
+        st.write("Please check for pending questionnaires from the LCIA or the Tribunal.")
         if st.button("Go to Questionnaires", type="primary"): 
             st.switch_page("pages/00_Fill_Questionnaire.py")
