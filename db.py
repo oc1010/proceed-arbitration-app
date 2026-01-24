@@ -13,7 +13,7 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- 1. STRUCTURE & STATUS (Questions + Release Flags) ---
+# --- 1. CONFIGURATION & RELEASE STATUS ---
 @st.cache_data(ttl=60)
 def load_full_config():
     """Loads the entire configuration object (questions + status flags)."""
@@ -26,12 +26,14 @@ def load_full_config():
     return {}
 
 def load_structure(phase="phase2"):
+    """Returns the list of questions for a specific phase."""
     data = load_full_config()
     return data.get(phase, [])
 
 def get_release_status():
-    """Returns dictionary of release flags."""
+    """Returns dictionary of release flags (e.g. {'phase1': True, 'phase2': False})."""
     data = load_full_config()
+    # Default: Phase 1 is released if it exists, Phase 2 starts hidden
     return {
         "phase1": data.get("phase1_released", False),
         "phase2": data.get("phase2_released", False)
@@ -45,7 +47,7 @@ def save_structure(new_questions, phase="phase2"):
     load_full_config.clear()
 
 def set_release_status(phase, status=True):
-    """Updates just the release flag (e.g. releasing Phase 2 to parties)."""
+    """Updates just the release flag."""
     current_data = load_full_config()
     current_data[f"{phase}_released"] = status
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
