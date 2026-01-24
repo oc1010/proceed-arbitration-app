@@ -33,7 +33,7 @@ with st.sidebar:
 st.title("✏️ Questionnaire Editor")
 st.caption("Customize the questions. Uncheck 'Include' to remove a question. Click 'Add New' to create your own.")
 
-# --- MASTER QUESTION BANK ---
+# --- MASTER QUESTION BANK (Updated with Q38-42) ---
 DEFAULT_QUESTIONS = [
     # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
     {
@@ -408,6 +408,65 @@ DEFAULT_QUESTIONS = [
         "options": [
             "**Option A: Required.** Parties withholding documents on grounds of privilege must produce a detailed privilege log (Index) describing the document and the basis for privilege.",
             "**Option B: Not Required.** Privilege logs are not required unless the Tribunal specifically orders one following a dispute."
+        ]
+    },
+
+    # XVI. CONFIDENTIALITY & TRANSPARENCY
+    {
+        "id": "publication", 
+        "question": "38. Publication of the Award (Sourcebook Topic 46)", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Default LCIA):** Strict Confidentiality. The award shall remain confidential and shall not be published.",
+            "**Option B (Redacted Publication):** The party consents to the publication of the award in a redacted format to protect names and sensitive commercial data. Redactions shall be agreed upon by the parties.",
+            "**Option C (Sanitized Summary):** The party consents to the publication of a summary of the legal reasoning of the award only, with no identifying facts."
+        ]
+    },
+
+    # XVII. DISABILITY ACCOMMODATION
+    {
+        "id": "disability", 
+        "question": "39. Accommodations for Participants", 
+        "type": "radio", 
+        "options": [
+            "**Option A (General Clause):** The PO1 shall include a standard liberty to apply, stating: \"At any point, either party may advise the Tribunal of a person who requires reasonable accommodation to facilitate their full participation.\"",
+            "**Option B (Specific Needs Now):** A participant already requires specific accommodations (e.g., document formatting for screen readers, specific break schedules, wheelchair access for physical venues).",
+            "**Option C:** No specific clause is required in PO1; parties will raise ad hoc if necessary."
+        ]
+    },
+
+    # XVIII. SUSTAINABILITY
+    {
+        "id": "sustainability", 
+        "question": "40. Green Protocols", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Campaign for Greener Arbitrations):** The Tribunal and parties shall conduct the arbitration in accordance with the Green Protocols of the Campaign for Greener Arbitrations (e.g., avoiding unnecessary travel, electronic-only bundles).",
+            "**Option B (Tribunal Discretion):** The Tribunal shall consider sustainability/environmental impact when making procedural rulings but no formal protocol is adopted.",
+            "**Option C:** No specific sustainability measures beyond the LCIA's default electronic filing rules."
+        ]
+    },
+
+    # XIX. ETHICS & COUNSEL CONDUCT
+    {
+        "id": "ethics", 
+        "question": "41. Guidelines on Party Representation", 
+        "type": "radio", 
+        "options": [
+            "**Option A (LCIA Only):** Conduct shall be governed exclusively by the mandatory Annex to the LCIA Rules 2020.",
+            "**Option B (LCIA + IBA):** The Tribunal shall also be guided by the IBA Guidelines on Party Representation in International Arbitration (2013). In the event of conflict, the LCIA Rules/Annex shall prevail."
+        ]
+    },
+
+    # XX. AMICABLE SETTLEMENT & MEDIATION
+    {
+        "id": "mediation", 
+        "question": "42. Mediation Window / Settlement Facilitation", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Standard):** The arbitration proceeds on a linear timetable. Parties may settle at any time, but no specific \"pause\" is built into the schedule.",
+            "**Option B (Mediation Window):** The Procedural Timetable shall include a specific stay of proceedings (e.g., 30 days) after the first round of written submissions to allow parties to attempt mediation.",
+            "**Option C (Tribunal Facilitation):** The parties authorize the Tribunal to facilitate settlement discussions (e.g., giving a preliminary non-binding view), understanding this may limit their ability to challenge the Tribunal later for lack of impartiality."
         ]
     }
 ]
