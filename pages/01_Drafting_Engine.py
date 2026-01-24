@@ -109,7 +109,12 @@ TOPIC_MAP = {
     "demonstratives": "34. Demonstrative Exhibits", 
     "privilege_std": "35. Standard of Legal Privilege", 
     "privilege_logs": "36. Privilege Logs", 
-    "reps_info": "16. Authorised Representatives"
+    "reps_info": "16. Authorised Representatives",
+    "publication": "38. Publication of the Award",
+    "disability": "39. Accommodations for Participants",
+    "sustainability": "40. Green Protocols",
+    "ethics": "41. Guidelines on Party Representation",
+    "mediation": "42. Mediation Window / Settlement"
 }
 
 responses = load_responses()
@@ -180,7 +185,7 @@ with tabs[0]:
         c_data = responses.get('claimant', {})
         r_data = responses.get('respondent', {})
         
-        # Load structure to get dynamic question titles (if customized)
+        # Load the question structure to map IDs to Real Question Text
         structure = load_structure()
         dynamic_map = {}
         if structure:
@@ -453,6 +458,14 @@ with tabs[8]:
     display_hint("cost_allocation")
     display_hint("counsel_fees")
     display_hint("deposits")
+    
+    st.divider()
+    st.markdown("#### Other Matters")
+    display_hint("publication")
+    display_hint("disability")
+    display_hint("sustainability")
+    display_hint("ethics")
+    display_hint("mediation")
 
 st.divider()
 
