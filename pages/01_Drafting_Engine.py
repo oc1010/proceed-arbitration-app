@@ -12,6 +12,7 @@ if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied.")
     st.stop()
 
+# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{st.session_state['user_role'].upper()}**")
     st.divider()
@@ -26,6 +27,7 @@ with st.sidebar:
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
+# --- CONTEXT SETUP ---
 context = {
     'Case_Number': 'ARB/24/001', 
     'seat_of_arbitration': 'London', 
@@ -60,6 +62,7 @@ context = {
 for i in range(1, 16):
     context[f"deadline_{i:02d}"] = "TBD"
 
+# --- TOPIC MAP ---
 TOPIC_MAP = {
     "style": "1. Style of Written Submissions", 
     "bifurcation": "2. Bifurcation of Proceedings", 
@@ -105,20 +108,27 @@ TOPIC_MAP = {
     "mediation": "42. Mediation Window / Settlement"
 }
 
+# --- LOAD DATA ---
 resp_p1 = load_responses("phase1")
 resp_p2 = load_responses("phase2")
+
+# --- HELPER FUNCTIONS ---
+def clean_text(text):
+    """Removes markdown bolding and extra whitespace for cleaner table display."""
+    if not text: return "Pending"
+    if "**" in text:
+        parts = text.split("**")
+        if len(parts) > 1:
+            return parts[1].strip()
+    return text
 
 def display_hint(key):
     c = resp_p2.get('claimant', {}).get(key, "Pending")
     r = resp_p2.get('respondent', {}).get(key, "Pending")
     topic_title = TOPIC_MAP.get(key, key)
     
-    def clean_hint(txt):
-        if "**" in txt: return txt.split("**")[1].strip()
-        return txt.split(".")[0] if txt else "Pending"
-
-    c_clean = clean_hint(c)
-    r_clean = clean_hint(r)
+    c_clean = clean_text(c)
+    r_clean = clean_text(r)
 
     if c == "Pending" and r == "Pending": 
         st.info("Waiting for parties...", icon="⏳")
@@ -132,62 +142,149 @@ def save_schedule(dates, style):
     save_timeline(events)
     return len(events)
 
+# --- TABS ---
 tabs = st.tabs(["Phase 1 Review", "Phase 2 Analysis", "General", "Parties", "Tribunal", "Timetable", "Evidence", "Hearing", "Logistics", "Award"])
 
+# --- TAB 1: PHASE 1 REVIEW (IMPROVED TABLE) ---
 with tabs[0]:
     st.subheader("Review: Pre-Tribunal Appointment Responses")
     st.caption("Responses collected by the LCIA prior to your appointment.")
+    
     c_data = resp_p1.get('claimant', {})
     r_data = resp_p1.get('respondent', {})
+    
     if not c_data and not r_data:
         st.info("No Phase 1 data found.")
     else:
         structure_p1 = load_structure("phase1")
-        q_map = {q['id']: q['question'] for q in structure_p1} if structure_p1 else {}
-        all_keys = [k for k in list(set(list(c_data.keys()) + list(r_data.keys()))) if not k.endswith("_comment")]
-        data = []
-        for k in all_keys:
-            q_text = q_map.get(k, k)
-            c_ans = c_data.get(k, "-")
-            r_ans = r_data.get(k, "-")
-            def clean(txt):
-                if "**" in txt: return txt.split("**")[1]
-                return txt
-            data.append({"Topic": q_text, "Claimant": clean(c_ans), "Respondent": clean(r_ans)})
-        st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+        
+        table_rows = []
+        
+        if structure_p1:
+            for q in structure_p1:
+                qid = q['id']
+                q_text = q['question']
+                
+                # Get Raw Answers
+                c_raw = c_data.get(qid, "")
+                r_raw = r_data.get(qid, "")
+                
+                # Get Comments
+                c_com = c_data.get(f"{qid}_comment", "")
+                r_com = r_data.get(f"{qid}_comment", "")
+                
+                # Determine Status
+                # Consider it a match if raw strings are identical and not empty
+                match = "✅" if (c_raw == r_raw and c_raw != "") else "❌"
+                if c_raw == "" and r_raw == "": match = "⏳"
+                
+                # Format for Display (Clean text + Comment Icon)
+                c_disp = clean_text(c_raw)
+                if c_com: c_disp += " 💬"
+                
+                r_disp = clean_text(r_raw)
+                if r_com: r_disp += " 💬"
+                
+                table_rows.append({
+                    "Status": match,
+                    "Question": q_text,
+                    "Claimant": c_disp,
+                    "Respondent": r_disp,
+                    "_c_com": c_com, # Hidden for processing
+                    "_r_com": r_com  # Hidden for processing
+                })
+        
+        if table_rows:
+            df = pd.DataFrame(table_rows)
+            
+            # Display Main Table
+            st.dataframe(
+                df[["Status", "Question", "Claimant", "Respondent"]], 
+                use_container_width=True, 
+                hide_index=True,
+                column_config={
+                    "Status": st.column_config.TextColumn("Stat", width="small"),
+                    "Question": st.column_config.TextColumn("Issue", width="large"),
+                    "Claimant": st.column_config.TextColumn("Claimant", width="medium"),
+                    "Respondent": st.column_config.TextColumn("Respondent", width="medium"),
+                }
+            )
+            
+            # Display Detailed Comments Below
+            st.divider()
+            st.markdown("### 📝 Detailed Comments")
+            has_comments = False
+            for row in table_rows:
+                if row["_c_com"] or row["_r_com"]:
+                    has_comments = True
+                    with st.expander(f"Comments on: {row['Question']}"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            if row["_c_com"]: 
+                                st.info(f"**Claimant:** {row['_c_com']}")
+                            else:
+                                st.caption("No comment from Claimant")
+                        with c2:
+                            if row["_r_com"]: 
+                                st.warning(f"**Respondent:** {row['_r_com']}")
+                            else:
+                                st.caption("No comment from Respondent")
+            
+            if not has_comments:
+                st.caption("No additional comments were provided by either party in Phase 1.")
+                
+        else:
+            st.warning("Structure loaded but no questions found.")
 
+# --- TAB 2: PHASE 2 ANALYSIS (Summary Table) ---
 with tabs[1]:
     st.subheader("Analysis: Pre-Hearing Questionnaire")
     c_data = resp_p2.get('claimant', {})
     r_data = resp_p2.get('respondent', {})
+    
     structure_p2 = load_structure("phase2")
     q_map_2 = {q['id']: q['question'] for q in structure_p2} if structure_p2 else {}
+    
+    # Filter out comment keys for main loop
     all_keys = [k for k in list(set(list(c_data.keys()) + list(r_data.keys()))) if not k.endswith("_comment")]
+    
     if not all_keys:
         st.info("No Phase 2 data submitted yet.")
     else:
         summary_data = []
+        
         def sort_key(k):
             text = q_map_2.get(k, TOPIC_MAP.get(k, k))
             try: return int(text.split(".")[0])
             except: return 999
+            
         for k in sorted(all_keys, key=sort_key):
             topic = q_map_2.get(k, TOPIC_MAP.get(k, k))
+            
             c_val = c_data.get(k, "Pending")
             r_val = r_data.get(k, "Pending")
+            
             c_comm = c_data.get(f"{k}_comment", "")
             r_comm = r_data.get(f"{k}_comment", "")
-            def clean_val(v):
-                if "**" in v: return v.split("**")[1].strip()
-                return v.split(".")[0] if v and "." in v else v
-            c_clean = clean_val(c_val)
-            r_clean = clean_val(r_val)
+            
+            c_clean = clean_text(c_val)
+            r_clean = clean_text(r_val)
+            
             if c_comm: c_clean += " 💬"
             if r_comm: r_clean += " 💬"
+            
             match = "✅" if c_val == r_val and c_val != "Pending" else "❌"
-            summary_data.append({"Question": topic, "Claimant": c_clean, "Respondent": r_clean, "Match": match})
+            
+            summary_data.append({
+                "Status": match,
+                "Question": topic, 
+                "Claimant": c_clean, 
+                "Respondent": r_clean
+            })
+        
         st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
-        st.markdown("### 💬 Party Comments")
+        
+        st.markdown("### 💬 Party Comments (Phase 2)")
         with st.expander("View Detailed Comments"):
             for k in sorted(all_keys, key=sort_key):
                 c_comm = c_data.get(f"{k}_comment", "")
@@ -198,6 +295,7 @@ with tabs[1]:
                     if r_comm: st.warning(f"Respondent: {r_comm}")
                     st.divider()
 
+# 2. GENERAL TAB (and rest of tabs)
 with tabs[2]:
     st.subheader("General Details")
     c1, c2 = st.columns(2)
@@ -213,6 +311,7 @@ with tabs[2]:
     display_hint("consolidation")
     context['proceedings_bifurcation'] = st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"])
 
+# 3. PARTIES TAB
 with tabs[3]:
     st.subheader("Parties & Representatives")
     st.markdown("#### Funding Disclosure")
@@ -234,6 +333,7 @@ with tabs[3]:
         context['Contact_details_of_Respondent'] = st.text_area("Client Address (Respondent)", context['Contact_details_of_Respondent'])
         context['Contact_details_of_Respondent_Representative'] = st.text_area("Counsel Contact (Respondent)", value=rep_info_r if rep_info_r!="Pending" else context['Contact_details_of_Respondent_Representative'], height=150)
 
+# 4. TRIBUNAL TAB
 with tabs[4]:
     st.subheader("Tribunal Members")
     context['Contact_details_of_Arbitrator_1'] = st.text_input("Co-Arbitrator 1", context['Contact_details_of_Arbitrator_1'])
@@ -247,6 +347,7 @@ with tabs[4]:
     context['name_of_tribunal_secretary'] = c1.text_input("Secretary Name", context['name_of_tribunal_secretary'])
     context['secretary_hourly_rate'] = c2.text_input("Secretary Hourly Rate", context['secretary_hourly_rate'])
 
+# 5. TIMETABLE TAB
 with tabs[5]:
     st.subheader("Procedural Timetable")
     st.markdown("#### Style Preference")
@@ -282,6 +383,7 @@ with tabs[5]:
         context['deadline_10'] = d['d10'].strftime("%d %B %Y")
         context['deadline_14'] = d['d14'].strftime("%d %B %Y")
 
+# 6. EVIDENCE TAB
 with tabs[6]:
     st.subheader("Evidence Protocols")
     st.markdown("#### Document Production")
@@ -298,6 +400,7 @@ with tabs[6]:
     display_hint("expert_reply")
     context['time_notify_oral'] = st.text_input("Notice for Oral Evidence", context['time_notify_oral'])
 
+# 7. HEARING TAB
 with tabs[7]:
     st.subheader("Hearing Logistics")
     display_hint("venue_type")
@@ -314,6 +417,7 @@ with tabs[7]:
     context['schedule_oral_hearing'] = st.text_area("Hearing Agenda", context['schedule_oral_hearing'])
     context['prehearing_matters'] = st.text_area("Pre-Hearing Matters", context['prehearing_matters'])
 
+# 8. LOGISTICS TAB
 with tabs[8]:
     st.subheader("Procedural Logistics")
     st.markdown("#### Submissions & Technology")
@@ -339,6 +443,7 @@ with tabs[8]:
     context['time_submit_exhibits'] = c1.text_input("Hearing Exhibits Deadline", context['time_submit_exhibits'])
     context['date_decide_venue'] = c2.text_input("Venue Decision Deadline", context['date_decide_venue'])
 
+# 9. AWARD TAB
 with tabs[9]:
     st.subheader("Award Specifics")
     display_hint("sign_award")
