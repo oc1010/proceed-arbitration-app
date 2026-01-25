@@ -52,10 +52,10 @@ with st.sidebar:
     
     if role == 'lcia':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Tribunal Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
     elif role == 'arbitrator':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Hearing Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
         st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
         st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
     else:
