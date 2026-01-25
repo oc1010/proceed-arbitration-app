@@ -3,6 +3,7 @@ import requests
 import json
 
 # --- CONFIG ---
+# These secrets must be set in your .streamlit/secrets.toml file or Streamlit Cloud Secrets
 API_KEY = st.secrets["X_MASTER_KEY"]
 BIN_STRUCT = st.secrets["BIN_ID_STRUCT"]
 BIN_RESP = st.secrets["BIN_ID_RESP"]
