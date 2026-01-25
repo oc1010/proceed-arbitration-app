@@ -282,7 +282,7 @@ DEFAULTS_PHASE_2 = [
     # VI. PARTY DETAILS
     {
         "id": "reps_info", 
-        "question": "16. Authorised Representatives", 
+        "question": "16. Authorised Representatives (LCIA Art. 18)", 
         "type": "text_area", 
         "options": ["Enter Lead Counsel Name, Email, Firm..."]
     },
@@ -299,7 +299,7 @@ DEFAULTS_PHASE_2 = [
     # VII. HEARING LOGISTICS
     {
         "id": "deadline_timezone", 
-        "question": "18. Definition of 'Deadline'", 
+        "question": "18. Definition of 'Deadline' (Timezone)", 
         "type": "radio", 
         "options": [
             "**Option A: Time of the Seat.** Time of the Seat of Arbitration (e.g., 17:00 London time).",
@@ -403,7 +403,7 @@ DEFAULTS_PHASE_2 = [
     },
     {
         "id": "expert_hot_tub", 
-        "question": "28. Mode of Expert Questioning", 
+        "question": "28. Mode of Expert Questioning ('Hot-Tubbing')", 
         "type": "radio", 
         "options": [
             "**Option A: Sequential.** Sequential Examination. Experts will be cross-examined individually, one after the other.",
@@ -572,6 +572,7 @@ if not current_structure:
 # --- ADD CUSTOM QUESTION ---
 if st.button("➕ Add New Question", type="primary"):
     new_id = f"custom_{CURRENT_PHASE}_{int(time.time())}"
+    # Next number logic
     try:
         last_q_text = current_structure[-1]['question']
         last_num = int(last_q_text.split(".")[0])
