@@ -22,6 +22,7 @@ with st.sidebar:
 
 st.title("Procedural Questionnaires")
 
+# --- CHECK RELEASE STATUS ---
 status = get_release_status()
 p1_live = status.get("phase1", False)
 p2_live = status.get("phase2", False)
@@ -30,6 +31,7 @@ if not p1_live and not p2_live:
     st.info("No questionnaires are currently active. Please wait for the LCIA or Tribunal.")
     st.stop()
 
+# --- RENDER FORM HELPER ---
 def render_form(phase, name):
     structure = load_structure(phase)
     all_resp = load_responses(phase)
@@ -46,10 +48,12 @@ def render_form(phase, name):
             st.markdown(f"### {q['question']}")
             curr = my_resp.get(q['id'], "")
             
+            # Simple renderer
             if q['type'] == 'text_area':
                 val = st.text_area("Your Answer:", curr, key=f"{phase}_{q['id']}")
                 new_r[q['id']] = val
             else:
+                # Radio logic
                 idx = 0
                 if curr in q['options']: idx = q['options'].index(curr)
                 elif curr and "Other" in q['options']: idx = q['options'].index("Other")
@@ -61,6 +65,7 @@ def render_form(phase, name):
                 
                 new_r[q['id']] = val
                 
+            # Comment Field
             comment_key = f"{q['id']}_comment"
             curr_comment = my_resp.get(comment_key, "")
             st.caption("Optional: Provide reasoning or additional details.")
@@ -74,6 +79,7 @@ def render_form(phase, name):
             save_responses(all_resp, phase)
             st.success("Submitted successfully!")
 
+# --- DISPLAY LOGIC ---
 if p2_live:
     t1, t2 = st.tabs(["Phase 2: Pre-Hearing", "Phase 1: Pre-Tribunal (Reference)"])
     with t1:
