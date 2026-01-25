@@ -52,10 +52,10 @@ with st.sidebar:
     
     if role == 'lcia':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Tribunal Qs")
     elif role == 'arbitrator':
         st.page_link("main.py", label="Home")
-        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Pre-Hearing Qs")
         st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
         st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
     else:
@@ -124,8 +124,13 @@ elif role == 'arbitrator':
     with c2:
         with st.container(border=True):
             st.markdown("### Drafting Engine")
-            st.write("Generate Procedural Order No. 1.")
+            st.write("View Responses & Draft Order.")
             if st.button("Open Engine"): st.switch_page("pages/01_Drafting_Engine.py")
+    with c3:
+        with st.container(border=True):
+            st.markdown("### Smart Timeline")
+            st.write("View or Edit Deadlines.")
+            if st.button("Open Timeline"): st.switch_page("pages/02_Smart_Timeline.py")
             
 elif role in ['claimant', 'respondent']:
     st.info(f"Welcome, Counsel for {role.title()}.")
