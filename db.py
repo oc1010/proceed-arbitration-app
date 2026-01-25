@@ -21,7 +21,7 @@ def load_full_config():
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            # FIX: Ensure we return a dict even if 'record' is null
+            # FIX: Explicitly check if 'record' is None
             data = resp.json().get('record')
             if data is None:
                 return {}
@@ -35,9 +35,8 @@ def load_structure(phase="phase2"):
     return data.get(phase, [])
 
 def get_release_status():
-    """Returns dictionary of release flags (e.g. {'phase1': True, 'phase2': False})."""
+    """Returns dictionary of release flags."""
     data = load_full_config()
-    # Default: Phase 1 is released if it exists, Phase 2 starts hidden
     return {
         "phase1": data.get("phase1_released", False),
         "phase2": data.get("phase2_released", False)
@@ -65,11 +64,9 @@ def load_responses(phase="phase2"):
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record')
-            # Handle empty/reset states
+            # Handle null/empty record
             if data is None or "initial_setup" in data: 
                 return {"claimant": {}, "respondent": {}}
-            
-            # Return specific phase data or empty dicts
             return data.get(phase, {"claimant": {}, "respondent": {}})
     except: pass
     return {"claimant": {}, "respondent": {}}
