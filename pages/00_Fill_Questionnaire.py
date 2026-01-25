@@ -12,7 +12,6 @@ def logout():
     st.session_state['user_role'] = None
     st.switch_page("main.py")
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     if st.button("Logout", use_container_width=True): logout()
@@ -23,7 +22,6 @@ with st.sidebar:
 
 st.title("Procedural Questionnaires")
 
-# --- CHECK RELEASE STATUS ---
 status = get_release_status()
 p1_live = status.get("phase1", False)
 p2_live = status.get("phase2", False)
@@ -32,7 +30,6 @@ if not p1_live and not p2_live:
     st.info("No questionnaires are currently active. Please wait for the LCIA or Tribunal.")
     st.stop()
 
-# --- RENDER FORM HELPER ---
 def render_form(phase, name):
     structure = load_structure(phase)
     all_resp = load_responses(phase)
@@ -49,29 +46,21 @@ def render_form(phase, name):
             st.markdown(f"### {q['question']}")
             curr = my_resp.get(q['id'], "")
             
-            # Simple renderer
             if q['type'] == 'text_area':
                 val = st.text_area("Your Answer:", curr, key=f"{phase}_{q['id']}")
                 new_r[q['id']] = val
             else:
-                # Radio/List logic
-                is_custom = curr not in q['options'] and curr != ""
-                if is_custom and "Other" in q['options']: list_index = q['options'].index("Other")
-                elif curr in q['options']: list_index = q['options'].index(curr)
-                else: list_index = 0
-
+                idx = 0
+                if curr in q['options']: idx = q['options'].index(curr)
+                elif curr and "Other" in q['options']: idx = q['options'].index("Other")
+                
                 if q['type'] == "radio":
-                    val = st.radio("Select one:", q['options'], index=list_index, key=f"{phase}_{q['id']}")
+                    val = st.radio("Select one:", q['options'], index=idx, key=f"{phase}_{q['id']}")
                 else:
-                    val = st.selectbox("Select:", q['options'], index=list_index, key=f"{phase}_{q['id']}")
+                    val = st.selectbox("Select:", q['options'], index=idx, key=f"{phase}_{q['id']}")
                 
-                final_val = val
-                if val == "Other":
-                    final_val = st.text_input("Please specify:", value=curr if is_custom else "", key=f"{phase}_oth_{q['id']}")
+                new_r[q['id']] = val
                 
-                new_r[q['id']] = final_val
-                
-            # Comment Field
             comment_key = f"{q['id']}_comment"
             curr_comment = my_resp.get(comment_key, "")
             st.caption("Optional: Provide reasoning or additional details.")
@@ -85,7 +74,6 @@ def render_form(phase, name):
             save_responses(all_resp, phase)
             st.success("Submitted successfully!")
 
-# --- DISPLAY LOGIC ---
 if p2_live:
     t1, t2 = st.tabs(["Phase 2: Pre-Hearing", "Phase 1: Pre-Tribunal (Reference)"])
     with t1:
@@ -95,4 +83,4 @@ if p2_live:
         render_form("phase1", "Phase 1: Pre-Tribunal Appointment Questionnaire")
 
 elif p1_live:
-    render_form("phase1", "Pre-Tribunal Appointment Questionnaire")
+    render_form("phase1", "Phase 1: Pre-Tribunal Appointment Questionnaire")
