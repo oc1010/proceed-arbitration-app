@@ -17,7 +17,7 @@ HEADERS = {
 # --- 1. CONFIGURATION & RELEASE STATUS ---
 @st.cache_data(ttl=60)
 def load_full_config():
-    """Loads the entire configuration object. Returns empty dict if DB is null."""
+    """Loads the entire configuration object. Returns empty dict if DB is null or invalid."""
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
@@ -25,7 +25,7 @@ def load_full_config():
             val = resp.json()
             # Safety check: ensure we get a dict, handling 'record' wrapper
             data = val.get('record')
-            if data is None:
+            if data is None or not isinstance(data, dict):
                 return {}
             return data
     except Exception:
@@ -78,7 +78,7 @@ def load_responses(phase="phase2"):
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record')
-            if data is None or "initial_setup" in data: 
+            if data is None or "initial_setup" in data or not isinstance(data, dict): 
                 return {"claimant": {}, "respondent": {}}
             return data.get(phase, {"claimant": {}, "respondent": {}})
     except: pass
@@ -89,7 +89,7 @@ def save_responses(new_phase_data, phase="phase2"):
     try:
         resp = requests.get(url, headers=HEADERS)
         current_full_data = resp.json().get('record')
-        if current_full_data is None:
+        if current_full_data is None or not isinstance(current_full_data, dict):
             current_full_data = {}
     except: 
         current_full_data = {}
