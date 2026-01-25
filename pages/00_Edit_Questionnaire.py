@@ -1,12 +1,21 @@
 import streamlit as st
-from db import load_structure, save_structure, reset_database
+from db import load_structure, save_structure, set_release_status, get_release_status
 import time
 
 st.set_page_config(page_title="Edit Questionnaire", layout="wide")
 
-if st.session_state.get('user_role') != 'arbitrator':
+role = st.session_state.get('user_role')
+if role not in ['lcia', 'arbitrator']:
     st.error("Access Denied")
     st.stop()
+
+# --- DETERMINE PHASE ---
+if role == 'lcia':
+    CURRENT_PHASE = "phase1"
+    PAGE_TITLE = "Phase 1: Pre-Tribunal Appointment Questionnaire"
+else:
+    CURRENT_PHASE = "phase2"
+    PAGE_TITLE = "Phase 2: Pre-Hearing Questionnaire"
 
 def logout():
     st.session_state['user_role'] = None
@@ -14,27 +23,113 @@ def logout():
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.write(f"User: **{st.session_state['user_role'].upper()}**")
+    st.write(f"User: **{role.upper()}**")
     if st.button("Logout", use_container_width=True): logout()
     st.divider()
-    st.caption("NAVIGATION")
     st.page_link("main.py", label="Home")
-    st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Questionnaire")
-    st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
-    st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
     
-    st.divider()
-    st.caption("ADMIN ACTIONS")
-    if st.button("🔄 Restore Default Questions", help="Re-loads the full master list of questions.", use_container_width=True):
-        save_structure({"initial_setup": True}) 
-        st.toast("Questions restored!")
-        st.rerun()
+    if role == 'lcia':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
+    else:
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
+        st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
+        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
 
-st.title("✏️ Questionnaire Editor")
-st.caption("Customize the questions. Uncheck 'Include' to remove a question. Click 'Add New' to create your own.")
+st.title(f"✏️ {PAGE_TITLE}")
 
-# --- MASTER QUESTION BANK (Updated with Q38-42) ---
-DEFAULT_QUESTIONS = [
+# --- RELEASE STATUS ---
+status = get_release_status()
+is_released = status.get(CURRENT_PHASE, False)
+
+# --- MASTER LIST: PHASE 1 (LCIA) ---
+# Source: phase1_questionaire.docx
+DEFAULTS_PHASE_1 = [
+    {
+        "id": "p1_duration", 
+        "question": "1. Target Procedural Timetable (Objective for Final Award)", 
+        "type": "radio", 
+        "options": [
+            "**Accelerated:** 6-9 months (requires strict deadlines and limited document production).", 
+            "**Standard efficiency:** 12-15 months.", 
+            "**Extended / Complex:** 18-24+ months (anticipating extensive evidence or multiple phases).",
+            "**Statutory / contractual Limit:** Date required under contract."
+        ]
+    },
+    {
+        "id": "p1_qual", 
+        "question": "2. Arbitrator Availability (Mandatory Qualification)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** The timeline selected above is a mandatory qualification for the appointment of the arbitrator.", 
+            "**No:** The timeline is an objective only."
+        ]
+    },
+    {
+        "id": "p1_early", 
+        "question": "3. Application for Early Determination (Summary Dismissal)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** We anticipate filing an application for early determination of any claims or defenses.", 
+            "**No:** We do not anticipate filing an application.", 
+            "**Possible:** Rights reserved."
+        ]
+    },
+    {
+        "id": "p1_days", 
+        "question": "4. Estimated Hearing Days (Merits)", 
+        "type": "radio", 
+        "options": [
+            "**None:** Documents-only arbitration (no oral hearing).", 
+            "**Short:** 1-3 days.", 
+            "**Medium:** 1 week (4-5 days).", 
+            "**Long:** 2 weeks or more (10+ days)."
+        ]
+    },
+    {
+        "id": "p1_block", 
+        "question": "5. Hearing Block Reservation", 
+        "type": "radio", 
+        "options": [
+            "**Strictly consecutive:** The hearing must be concluded in one continuous block.", 
+            "**Flexible / Split:** We accept split weeks to accommodate arbitrator availability."
+        ]
+    },
+    {
+        "id": "p1_dates", 
+        "question": "6. Blackout Dates / Preferred Windows (Next 18 Months)", 
+        "type": "text_area", 
+        "options": ["Enter specific dates or months here..."]
+    },
+    {
+        "id": "p1_format", 
+        "question": "7. Default Format for Administrative / Procedural Conferences", 
+        "type": "radio", 
+        "options": ["Audio only", "Video Conference", "In-Person"]
+    },
+    {
+        "id": "p1_hearing", 
+        "question": "8. Preference for Main Evidentiary Hearing", 
+        "type": "radio", 
+        "options": [
+            "**Fully Virtual:** All participants attend remotely.", 
+            "**Hybrid (Split Location):** Tribunal and counsel in one physical room and witness joins remotely.", 
+            "**Fully In-Person:** Standard physical hearing."
+        ]
+    },
+    {
+        "id": "p1_data", 
+        "question": "9. Data Protocol (E-Hearing Platform)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** We prefer a dedicated third-party platform.", 
+            "**No:** Email and standard file transfer service (Dropbox / ShareFile) is sufficient."
+        ]
+    }
+]
+
+# --- MASTER LIST: PHASE 2 (ARBITRATOR) ---
+# Source: questionnaire.docx
+DEFAULTS_PHASE_2 = [
     # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
     {
         "id": "style", 
@@ -58,7 +153,7 @@ DEFAULT_QUESTIONS = [
     # II. DOCUMENT PRODUCTION & EVIDENCE
     {
         "id": "doc_prod", 
-        "question": "3. Applicable Guidelines", 
+        "question": "3. Applicable Guidelines (Evidence)", 
         "type": "selectbox", 
         "options": [
             "**Option A: IBA Rules (Binding).** The IBA Rules on the Taking of Evidence (2020) shall apply as binding rules.",
@@ -471,15 +566,15 @@ DEFAULT_QUESTIONS = [
     }
 ]
 
-# --- LOAD DATA ---
-current_structure = load_structure()
+# --- LOAD CORRECT DATA ---
+current_structure = load_structure(phase=CURRENT_PHASE)
 if not current_structure:
-    current_structure = DEFAULT_QUESTIONS
+    current_structure = DEFAULTS_PHASE_1 if role == 'lcia' else DEFAULTS_PHASE_2
 
 # --- ADD CUSTOM QUESTION ---
 if st.button("➕ Add New Question", type="primary"):
-    new_id = f"custom_{int(time.time())}"
-    # Default 'next' number logic
+    new_id = f"custom_{CURRENT_PHASE}_{int(time.time())}"
+    # Calculate next number based on last item
     try:
         last_q_text = current_structure[-1]['question']
         last_num = int(last_q_text.split(".")[0])
@@ -494,10 +589,10 @@ if st.button("➕ Add New Question", type="primary"):
         "options": ["**Option A:** Choice 1", "**Option B:** Choice 2"]
     }
     current_structure.append(new_q)
-    save_structure(current_structure)
+    save_structure(current_structure, phase=CURRENT_PHASE)
     st.rerun()
 
-# --- EDITOR UI ---
+# --- EDITOR FORM ---
 with st.form("editor_form"):
     updated_structure = []
     st.markdown("### Questions Configuration")
@@ -543,6 +638,25 @@ with st.form("editor_form"):
                     "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
                 })
     
-    if st.form_submit_button("💾 Publish to Parties", type="primary"):
-        save_structure(updated_structure)
-        st.success(f"Published {len(updated_structure)} questions.")
+    # ACTION BUTTONS
+    c_save, c_release = st.columns([1, 1])
+    
+    with c_save:
+        if st.form_submit_button("💾 Save Draft"):
+            save_structure(updated_structure, phase=CURRENT_PHASE)
+            st.success("Draft saved.")
+            
+    with c_release:
+        # Check current status
+        btn_label = "🚀 Release to Parties" if not is_released else "🚀 Update Released Version"
+        if st.form_submit_button(btn_label, type="primary"):
+            save_structure(updated_structure, phase=CURRENT_PHASE)
+            set_release_status(CURRENT_PHASE, True)
+            st.success(f"✅ {PAGE_TITLE} is now LIVE for the parties!")
+            time.sleep(1)
+            st.rerun()
+
+if is_released:
+    st.success("🟢 Status: RELEASED to Parties")
+else:
+    st.warning("🔴 Status: HIDDEN from Parties (Draft Mode)")
