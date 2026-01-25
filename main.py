@@ -51,8 +51,17 @@ def render_phase1_table():
         c_com = c_data.get(f"{key}_comment", "")
         r_com = r_data.get(f"{key}_comment", "")
         
-        # Clean Text
-        def clean(t): return t.split("**")[1].strip() if "**" in t else t
+        # Clean Text: Remove markdown bolding AND trailing colons
+        def clean(t): 
+            if "**" in t: 
+                # Extract text between **...**
+                extracted = t.split("**")[1].strip()
+                # Remove trailing colon if present (e.g. "Accelerated:" -> "Accelerated")
+                if extracted.endswith(":"):
+                    extracted = extracted[:-1]
+                return extracted
+            return t
+
         c_disp = clean(c_raw)
         r_disp = clean(r_raw)
         
@@ -75,7 +84,7 @@ def render_phase1_table():
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Status": st.column_config.TextColumn("Stat", width="small"),
+                "Status": st.column_config.TextColumn("Match?", width="small", help="Indicates if parties agree"),
                 "Topic": st.column_config.TextColumn("Question", width="medium"),
                 "Claimant": st.column_config.TextColumn("Claimant", width="large"),
                 "Respondent": st.column_config.TextColumn("Respondent", width="large")
