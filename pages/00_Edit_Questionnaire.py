@@ -9,7 +9,6 @@ if role not in ['lcia', 'arbitrator']:
     st.error("Access Denied")
     st.stop()
 
-# --- DETERMINE PHASE ---
 if role == 'lcia':
     CURRENT_PHASE = "phase1"
     PAGE_TITLE = "Phase 1: Pre-Tribunal Appointment Questionnaire"
@@ -21,7 +20,6 @@ def logout():
     st.session_state['user_role'] = None
     st.switch_page("main.py")
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     if st.button("Logout", use_container_width=True): logout()
@@ -37,7 +35,6 @@ with st.sidebar:
 
 st.title(f"✏️ {PAGE_TITLE}")
 
-# --- RELEASE STATUS ---
 status = get_release_status()
 is_released = status.get(CURRENT_PHASE, False)
 
@@ -299,7 +296,7 @@ DEFAULTS_PHASE_2 = [
     # VII. HEARING LOGISTICS
     {
         "id": "deadline_timezone", 
-        "question": "18. Definition of 'Deadline' (Timezone)", 
+        "question": "18. Definition of 'Deadline'", 
         "type": "radio", 
         "options": [
             "**Option A: Time of the Seat.** Time of the Seat of Arbitration (e.g., 17:00 London time).",
@@ -592,14 +589,17 @@ with st.form("editor_form"):
     for i, q in enumerate(current_structure):
         with st.container(border=True):
             c1, c2 = st.columns([3, 1])
+            # Question
             new_q_text = c1.text_input(f"Q{i+1}", value=q['question'], key=f"q_{i}")
             
+            # Type
             type_map = {"radio": "List (Radio)", "selectbox": "Dropdown", "text_area": "Text Input"}
             rev_map = {"List (Radio)": "radio", "Dropdown": "selectbox", "Text Input": "text_area"}
             curr_type = type_map.get(q['type'], "List (Radio)")
             new_type_disp = c2.selectbox("Type", list(type_map.values()), index=list(type_map.values()).index(curr_type), key=f"t_{i}")
             new_type = rev_map[new_type_disp]
             
+            # Options
             new_options = []
             if new_type != "text_area":
                 st.write("**Options:**")
@@ -607,6 +607,7 @@ with st.form("editor_form"):
                 for idx, o in enumerate(existing_opts):
                     val = st.text_input(f"Option {idx+1}", value=o, key=f"o_{i}_{idx}")
                     new_options.append(val)
+                # Blank slots logic
                 if len(new_options) < 2:
                     for j in range(len(new_options), 2):
                         val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
@@ -618,13 +619,16 @@ with st.form("editor_form"):
                 "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
             })
     
+    # ACTION BUTTONS
     c_save, c_release = st.columns([1, 1])
+    
     with c_save:
         if st.form_submit_button("💾 Save Draft"):
             save_structure(updated_structure, phase=CURRENT_PHASE)
             st.success("Draft saved.")
             
     with c_release:
+        # Check current status
         btn_label = "🚀 Release to Parties" if not is_released else "🚀 Update Released Version"
         if st.form_submit_button(btn_label, type="primary"):
             save_structure(updated_structure, phase=CURRENT_PHASE)
