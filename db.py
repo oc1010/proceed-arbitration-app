@@ -3,6 +3,7 @@ import requests
 import json
 
 # --- CONFIG ---
+# Ensure these are set in your Streamlit Secrets
 API_KEY = st.secrets["X_MASTER_KEY"]
 BIN_STRUCT = st.secrets["BIN_ID_STRUCT"]
 BIN_RESP = st.secrets["BIN_ID_RESP"]
@@ -16,17 +17,19 @@ HEADERS = {
 # --- 1. CONFIGURATION & RELEASE STATUS ---
 @st.cache_data(ttl=60)
 def load_full_config():
-    """Loads the entire configuration object (questions + status flags)."""
+    """Loads the entire configuration object. Returns empty dict if DB is null."""
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            # FIX: Explicitly check if 'record' is None
-            data = resp.json().get('record')
+            val = resp.json()
+            # Safety check: ensure we get a dict, handling 'record' wrapper
+            data = val.get('record')
             if data is None:
                 return {}
             return data
-    except: pass
+    except Exception:
+        pass
     return {}
 
 def load_structure(phase="phase2"):
@@ -37,21 +40,32 @@ def load_structure(phase="phase2"):
 def get_release_status():
     """Returns dictionary of release flags."""
     data = load_full_config()
+    # CRITICAL FIX: Double check data is not None before calling .get()
+    if data is None: 
+        data = {}
+    
     return {
         "phase1": data.get("phase1_released", False),
         "phase2": data.get("phase2_released", False)
     }
 
 def save_structure(new_questions, phase="phase2"):
-    """Saves questions without changing release status."""
+    """Saves questions properly to the cloud."""
     current_data = load_full_config()
+    if current_data is None:
+        current_data = {}
+        
     current_data[phase] = new_questions
+    
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
     load_full_config.clear()
 
 def set_release_status(phase, status=True):
     """Updates just the release flag."""
     current_data = load_full_config()
+    if current_data is None:
+        current_data = {}
+        
     current_data[f"{phase}_released"] = status
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
     load_full_config.clear()
@@ -64,7 +78,6 @@ def load_responses(phase="phase2"):
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record')
-            # Handle null/empty record
             if data is None or "initial_setup" in data: 
                 return {"claimant": {}, "respondent": {}}
             return data.get(phase, {"claimant": {}, "respondent": {}})
@@ -105,9 +118,11 @@ def save_timeline(data):
 
 # --- 4. RESET ---
 def reset_database():
+    # Force overwrite all bins with clean structures
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=[{"initial_setup": True}], headers=HEADERS)
+    
     load_full_config.clear()
     load_responses.clear()
     load_timeline.clear()
