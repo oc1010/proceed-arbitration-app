@@ -3,7 +3,6 @@ import requests
 import json
 
 # --- CONFIG ---
-# These secrets must be set in your .streamlit/secrets.toml file or Streamlit Cloud Secrets
 API_KEY = st.secrets["X_MASTER_KEY"]
 BIN_STRUCT = st.secrets["BIN_ID_STRUCT"]
 BIN_RESP = st.secrets["BIN_ID_RESP"]
@@ -22,7 +21,11 @@ def load_full_config():
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            return resp.json().get('record', {})
+            # FIX: Ensure we return a dict even if 'record' is null
+            data = resp.json().get('record')
+            if data is None:
+                return {}
+            return data
     except: pass
     return {}
 
@@ -61,8 +64,12 @@ def load_responses(phase="phase2"):
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record', {})
-            if "initial_setup" in data: return {"claimant": {}, "respondent": {}}
+            data = resp.json().get('record')
+            # Handle empty/reset states
+            if data is None or "initial_setup" in data: 
+                return {"claimant": {}, "respondent": {}}
+            
+            # Return specific phase data or empty dicts
             return data.get(phase, {"claimant": {}, "respondent": {}})
     except: pass
     return {"claimant": {}, "respondent": {}}
@@ -71,7 +78,9 @@ def save_responses(new_phase_data, phase="phase2"):
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
-        current_full_data = resp.json().get('record', {})
+        current_full_data = resp.json().get('record')
+        if current_full_data is None:
+            current_full_data = {}
     except: 
         current_full_data = {}
     
@@ -86,7 +95,7 @@ def load_timeline():
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record', [])
+            data = resp.json().get('record')
             if isinstance(data, list):
                 return [x for x in data if "initial_setup" not in x]
     except: pass
