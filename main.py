@@ -70,13 +70,11 @@ role = st.session_state['user_role']
 if role == 'lcia':
     st.info("Logged in as: LCIA Institution")
     
-    # 1. EDITING
     with st.container(border=True):
         st.markdown("### 1. Phase 1: Pre-Tribunal Appointment")
         st.write("Edit and release the initial questionnaire to the parties.")
         if st.button("Edit Questionnaire"): st.switch_page("pages/00_Edit_Questionnaire.py")
 
-    # 2. VIEWING RESPONSES
     st.divider()
     st.markdown("### 2. Monitor Responses")
     with st.expander("🔎 View Phase 1 Responses (Pre-Tribunal)", expanded=True):
@@ -102,7 +100,6 @@ if role == 'lcia':
 elif role == 'arbitrator':
     st.info("Logged in as: Arbitral Tribunal")
     
-    # 1. REVIEW PHASE 1
     with st.expander("📄 Review Pre-Tribunal Questionnaire (Phase 1)"):
         p1_resp = load_responses("phase1")
         c_data = p1_resp.get('claimant', {})
@@ -111,7 +108,6 @@ elif role == 'arbitrator':
             st.warning("Parties have not submitted Phase 1 yet.")
         else:
             st.write("Responses received from parties prior to your appointment:")
-            # Simple view
             df_p1 = pd.DataFrame([c_data, r_data], index=["Claimant", "Respondent"]).T
             st.dataframe(df_p1)
 
