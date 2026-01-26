@@ -101,6 +101,21 @@ def load_structure(phase="phase2"):
     data = load_full_config()
     return data.get(phase, [])
 
+# --- MISSING FUNCTIONS RESTORED HERE ---
+def get_release_status():
+    data = load_full_config()
+    return {
+        "phase1": data.get("phase1_released", False),
+        "phase2": data.get("phase2_released", False)
+    }
+
+def set_release_status(phase, status=True):
+    current = load_full_config()
+    current[f"{phase}_released"] = status
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current, headers=HEADERS)
+    load_full_config.clear()
+# ---------------------------------------
+
 def save_structure(new_questions, phase="phase2"):
     current = load_full_config()
     current[phase] = new_questions
