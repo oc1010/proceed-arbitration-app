@@ -24,23 +24,19 @@ def send_email_notification(to_emails, subject, body):
     """
     # A. LOG TO DATABASE (IN-APP)
     try:
-        # Load existing notifications
         full_data = load_complex_data()
         if "notifications" not in full_data: full_data["notifications"] = []
         
-        # Determine roles based on context (simplified for logging)
-        # We log it generally so it appears in the system
         new_note = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "to_roles": ["Recipients"], # Generic label since we only have emails here
+            "to_roles": ["Recipients"], 
             "subject": subject,
             "body": body
         }
         full_data["notifications"].append(new_note)
         
-        # Save back
         requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full_data, headers=HEADERS)
-        load_complex_data.clear() # Clear cache
+        load_complex_data.clear() 
     except Exception as e:
         print(f"DB Log Failed: {e}")
 
@@ -50,14 +46,13 @@ def send_email_notification(to_emails, subject, body):
     smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
     smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
 
-    # Professional Template Construction
-    # We use a loop to send individually to ensure privacy and delivery of duplicates
     if smtp_user and smtp_pass and to_emails:
         try:
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
                 
+                # Send separately to ensure delivery to all
                 for recipient in to_emails:
                     if not recipient: continue
                     
@@ -66,7 +61,6 @@ def send_email_notification(to_emails, subject, body):
                     msg['To'] = recipient
                     msg['Subject'] = f"[PROCEED] {subject}"
                     
-                    # Professional Body
                     formatted_body = f"""
 AUTOMATIC NOTIFICATION - PROCEED ARBITRATION PLATFORM
 =====================================================
