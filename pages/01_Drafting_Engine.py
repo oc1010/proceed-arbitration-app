@@ -2,7 +2,7 @@ import streamlit as st
 from docxtpl import DocxTemplate
 from io import BytesIO
 from datetime import date, timedelta
-from db import load_responses, save_complex_data, load_complex_data, send_email_notification
+from db import load_responses, save_complex_data, load_complex_data, load_structure, send_email_notification
 import pandas as pd
 import os
 
@@ -32,19 +32,31 @@ with st.sidebar:
 st.title("Procedural Order No. 1 | Drafting Engine")
 
 # --- 1. INITIALIZE SESSION STATE (Anti-Jump & Anti-Duplicate Fix) ---
+# We use 'tt' (timetable) prefix for dates to guarantee uniqueness from General settings.
 DEFAULTS = {
+    # General
     'de_case_number': 'ARB/24/001',
     'de_seat': 'London',
     'de_law': 'English Law',
     'de_meeting_date': date.today(),
+    'de_inst': 'LCIA',
+    'de_bifurc_status': 'not bifurcated',
+    
+    # Parties
     'de_claimant_rep1': '', 'de_claimant_rep2': '',
     'de_claimant_addr': '', 'de_claimant_contact': '',
     'de_resp_rep1': '', 'de_resp_rep2': '',
     'de_resp_addr': '', 'de_resp_contact': '',
+    
+    # Tribunal
     'de_arb1': '', 'de_arb2': '', 'de_arb3': '',
     'de_sec_name': '', 'de_sec_rate': '',
+    
+    # Logistics / Limits
     'de_limits': '', 'de_file_len': '50 chars',
     'de_timezone': '17:00 London',
+    
+    # Evidence / Hearing
     'de_time_docs': '14 days', 'de_time_shred': '6 months',
     'de_time_oral': '45 days', 'de_time_interp': '14 days',
     'de_time_bundle': '14 days before', 'de_time_exhibits': '24 hours',
@@ -52,10 +64,13 @@ DEFAULTS = {
     'de_venue_name': 'IDRC London', 'de_venue_city': 'London',
     'de_hours': '09:30 - 17:30',
     'de_agenda': '', 'de_prehear': '',
+    
+    # Communications
     'de_time_abbr': '7 days', 'de_time_contact': '7 days', 'de_time_new_counsel': 'immediately',
+    
+    # Timetable Style
     'de_style': 'Memorial', 
-    'de_bifurc_status': 'not bifurcated',
-    'de_inst': 'LCIA',
+    
     # Timetable Dates (Prefix 'tt_' to avoid conflicts)
     'de_tt_d1': date.today(), 
     'de_tt_d2': date.today() + timedelta(weeks=4),
@@ -240,18 +255,7 @@ def render_phase1_table():
             })
             
     if table_rows:
-        st.dataframe(
-            pd.DataFrame(table_rows)[["Match?", "Question", "Claimant", "Respondent"]],
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Match?": st.column_config.TextColumn("Match?", width="small"),
-                "Question": st.column_config.TextColumn("Question", width="medium"),
-                "Claimant": st.column_config.TextColumn("Claimant", width="large"),
-                "Respondent": st.column_config.TextColumn("Respondent", width="large")
-            }
-        )
-        
+        st.dataframe(pd.DataFrame(table_rows)[["Match?", "Question", "Claimant", "Respondent"]], use_container_width=True, hide_index=True)
         for row in table_rows:
             if row["_c_com"] or row["_r_com"]:
                 with st.expander(f"💬 Comments: {row['Question']}"):
@@ -265,12 +269,12 @@ tabs = st.tabs(["Phase 1 Review", "Phase 2 Analysis", "General", "Parties", "Tri
 # --- TAB 1: PHASE 1 REVIEW ---
 with tabs[0]:
     st.subheader("Review: Pre-Tribunal Questionnaire")
-    st.caption("Responses collected by the LCIA prior to your appointment.")
     render_phase1_table()
 
 # --- TAB 2: PHASE 2 ANALYSIS ---
 with tabs[1]:
     st.subheader("Analysis: Pre-Hearing Questionnaire")
+    
     c_data = resp_p2.get('claimant', {})
     r_data = resp_p2.get('respondent', {})
     
@@ -334,12 +338,12 @@ with tabs[1]:
 # --- TAB 3: GENERAL ---
 with tabs[2]:
     st.subheader("General Details")
-    # FORM WRAPPER TO PREVENT JUMPING
     with st.form("gen_form"):
         c1, c2 = st.columns(2)
         st.text_input("Case Reference Number", key="de_case_number")
         st.text_input("Seat of Arbitration", key="de_seat")
-        st.date_input("First Procedural Meeting Date", key="de_meeting_date")
+        # UNIQUE KEY: de_meeting_date
+        st.date_input("First Procedural Meeting Date", key="de_meeting_date") 
         st.text_input("Governing Law", key="de_law")
         st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst")
         st.divider()
@@ -347,7 +351,6 @@ with tabs[2]:
         display_hint("bifurcation")
         display_hint("consolidation")
         st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"], key="de_bifurc_status")
-        
         if st.form_submit_button("💾 Save General Details"):
             st.success("Saved.")
 
@@ -372,7 +375,6 @@ with tabs[3]:
             st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
             st.text_area("Client Address (Respondent)", key="de_resp_addr")
             st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
-        
         if st.form_submit_button("💾 Save Parties"):
             st.success("Saved.")
 
@@ -390,7 +392,6 @@ with tabs[4]:
         c1, c2 = st.columns(2)
         st.text_input("Secretary Name", key="de_sec_name")
         st.text_input("Secretary Hourly Rate", key="de_sec_rate")
-        
         if st.form_submit_button("💾 Save Tribunal"):
             st.success("Saved.")
 
@@ -405,6 +406,7 @@ with tabs[5]:
     with st.form("time_form"):
         c1, c2 = st.columns(2)
         with c1:
+            # UNIQUE KEYS: de_tt_d1 etc.
             st.date_input("1. Statement of Case", key="de_tt_d1")
             st.date_input("2. Statement of Defence", key="de_tt_d2")
             st.date_input("3. Doc Production Requests", key="de_tt_d3")
@@ -518,13 +520,15 @@ st.divider()
 # --- GENERATION & SYNC ---
 if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
     template_path = "template_po1.docx"
+    
     if not os.path.exists(template_path):
         st.error(f"System Error: Template file '{template_path}' not found. Please upload it to GitHub.")
     else:
+        # 1. Sync dates
         count = sync_timeline_to_phase4(st.session_state.de_style)
-        st.success(f"PO1 Generated. {count} events synced.")
+        st.toast(f"System Update: Synced {count} events to Smart Timeline.")
         
-        # Build Context for Doc Generation (Mapping 'tt' keys back to doc vars)
+        # 2. Build final context
         style = st.session_state.de_style
         d9 = st.session_state.de_tt_d9_mem if style == "Memorial" else st.session_state.de_tt_d9_pl
         d10 = st.session_state.de_tt_d10_mem if style == "Memorial" else st.session_state.de_tt_d10_pl
@@ -533,11 +537,45 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
         ctx = {
             'Case_Number': st.session_state.de_case_number,
             'seat_of_arbitration': st.session_state.de_seat,
-            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"),
+            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"), 
+            'governing_law_of_contract': st.session_state.de_law,
+            'claimant_rep_1': st.session_state.de_claimant_rep1,
+            'claimant_rep_2': st.session_state.de_claimant_rep2,
+            'Contact_details_of_Claimant': st.session_state.de_claimant_addr,
+            'Contact_details_of_Claimant_Representative': st.session_state.de_claimant_contact,
+            'respondent_rep_1': st.session_state.de_resp_rep1,
+            'respondent_rep_2': st.session_state.de_resp_rep2,
+            'Contact_details_of_Respondent': st.session_state.de_resp_addr,
+            'Contact_details_of_Respondent_Representative': st.session_state.de_resp_contact,
+            'Contact_details_of_Arbitrator_1': st.session_state.de_arb1,
+            'Contact_details_of_Arbitrator_2': st.session_state.de_arb2,
+            'Contact_details_of_Arbitrator_3_Presiding': st.session_state.de_arb3,
+            'name_of_tribunal_secretary': st.session_state.de_sec_name,
+            'secretary_hourly_rate': st.session_state.de_sec_rate,
+            'limits_submission': st.session_state.de_limits,
+            'max_filename_len': st.session_state.de_file_len,
+            'deadline_timezone': st.session_state.de_timezone,
+            'time_produce_docs': st.session_state.de_time_docs,
+            'time_shred_docs': st.session_state.de_time_shred,
+            'time_notify_oral': st.session_state.de_time_oral,
+            'time_appoint_interpreter': st.session_state.de_time_interp,
+            'time_hearing_bundle': st.session_state.de_time_bundle,
+            'time_submit_exhibits': st.session_state.de_time_exhibits,
+            'date_decide_venue': st.session_state.de_date_venue,
+            'place_in_person': st.session_state.de_venue_name,
+            'physical_venue_city': st.session_state.de_venue_city,
+            'hearing_hours': st.session_state.de_hours,
+            'schedule_oral_hearing': st.session_state.de_agenda,
+            'prehearing_matters': st.session_state.de_prehear,
+            'time_abbreviations': st.session_state.de_time_abbr,
+            'time_confirm_contact': st.session_state.de_time_contact,
+            'time_notify_counsel': st.session_state.de_time_new_counsel,
+            # Standard Dates
             'deadline_01': st.session_state.de_tt_d1.strftime("%d %B %Y"),
             'deadline_02': st.session_state.de_tt_d2.strftime("%d %B %Y"),
             'deadline_03': st.session_state.de_tt_d3.strftime("%d %B %Y"),
             'deadline_08': st.session_state.de_tt_d8.strftime("%d %B %Y"),
+            # Conditional
             'deadline_09': d9.strftime("%d %B %Y"),
             'deadline_10': d10.strftime("%d %B %Y"),
             'deadline_12': d_final.strftime("%d %B %Y") if style == "Memorial" else "N/A",
@@ -550,6 +588,12 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
-            st.download_button("Download Order (.docx)", data=buffer, file_name="PO1.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            st.success("Document Generated Successfully.")
+            st.download_button(
+                label="Download Order (.docx)",
+                data=buffer,
+                file_name=f"PO1_{st.session_state.de_case_number}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
         except Exception as e:
             st.error(f"Generation Failed: {e}")
