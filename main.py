@@ -43,7 +43,7 @@ def render_phase1_table():
     
     for key, topic in P1_MAP.items():
         c_raw, r_raw = c_data.get(key, ""), r_data.get(key, "")
-        c_com, r_com = c_data.get(f"{key}_comment", ""), r_data.get(f"{k}_comment", "") # Typo fix in get
+        c_com, r_com = c_data.get(f"{key}_comment", ""), r_data.get(f"{key}_comment", "")
         
         def clean(t): 
             if "**" in t: 
@@ -141,7 +141,7 @@ elif role == 'arbitrator':
     c1, c2, c3 = st.columns(3)
     with c1:
         with st.container(border=True):
-            st.markdown("### PO1 Config"); st.write("Configure Qs")
+            st.markdown("### Phase 2"); st.write("PO1 Questionnaire")
             if st.button("Edit"): st.switch_page("pages/00_Edit_Questionnaire.py")
     with c2:
         with st.container(border=True):
