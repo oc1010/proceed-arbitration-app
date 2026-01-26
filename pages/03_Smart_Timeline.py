@@ -13,19 +13,31 @@ if not role:
     if st.button("Log in"): st.switch_page("main.py")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (PERSISTENT) ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     st.divider()
     st.page_link("main.py", label="Home")
+    
     if role == 'lcia':
         st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
     elif role == 'arbitrator':
         st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
         st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
-    st.page_link("pages/02_Doc_Production.py", label="Doc Production")
-    st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
-    st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+    else:
+        st.page_link("pages/00_Fill_Questionnaire.py", label="Fill Questionnaires")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+
+    st.divider()
+    def logout():
+        st.session_state['user_role'] = None
+        st.switch_page("main.py")
+    st.button("Logout", on_click=logout)
 
 st.title("📅 Phase 4: Procedural Timetable")
 
@@ -48,75 +60,138 @@ with tab1:
     if not timeline:
         st.warning("No procedural timetable found. Arbitrator must generate PO1 first.")
     else:
-        # --- DATA NORMALIZATION (Prevents KeyError) ---
+        # --- DATA PREP ---
         df = pd.DataFrame(timeline)
         
-        # 1. Backwards Compatibility: Handle old 'date' field if 'current_date' missing
+        # Safety Check for keys
         if 'current_date' not in df.columns and 'date' in df.columns:
             df['current_date'] = df['date']
-            df['original_date'] = df['date']
-            
-        # 2. Safety: Ensure required columns exist
-        if 'current_date' in df.columns:
-            df['Start'] = pd.to_datetime(df['current_date'])
-            df['End'] = df['Start'] + timedelta(days=2) # Small width
-            
-            today = pd.to_datetime(date.today())
-            def get_status(row):
-                if row['Start'] < today: return "Completed"
-                return "Upcoming"
-            df['Status'] = df.apply(get_status, axis=1)
+        
+        df['Date'] = pd.to_datetime(df['current_date'])
+        
+        # Sort by date for proper display
+        df = df.sort_values(by='Date')
+        
+        # Create Staggered Heights to avoid bunching (1, -1, 2, -2...)
+        # This makes the "pretty" horizontal timeline you requested
+        heights = []
+        for i in range(len(df)):
+            val = (i % 3) + 1
+            if i % 2 == 0: val = val * 1
+            else: val = val * -1
+            heights.append(val)
+        df['Height'] = heights
+        df['Zero'] = 0 # Baseline for the horizontal line
 
-            # 3. VISUAL LINE (Altair)
-            chart = alt.Chart(df).mark_bar(cornerRadius=10, height=20).encode(
-                x=alt.X('Start', title='Timeline', axis=alt.Axis(format='%d %b %Y')),
-                x2='End',
-                y=alt.Y('event', title=None, sort='x'),
-                color=alt.Color('Status', scale=alt.Scale(domain=['Completed', 'Upcoming'], range=['#28a745', '#007bff'])),
-                tooltip=['event', 'current_date', 'owner', 'logistics']
-            ).properties(title="Case Timeline", height=400)
-            
-            st.altair_chart(chart, use_container_width=True)
+        today = pd.to_datetime(date.today())
+        def get_status(row):
+            if row['Date'] < today: return "Completed"
+            return "Upcoming"
+        df['Status'] = df.apply(get_status, axis=1)
 
-            # 4. DETAILED TABLE
-            st.markdown("### Schedule Details")
-            display_cols = ['event', 'current_date', 'owner', 'logistics', 'Status']
-            # Ensure columns exist before selecting
-            valid_cols = [c for c in display_cols if c in df.columns]
-            
-            st.dataframe(
-                df[valid_cols], 
-                use_container_width=True,
-                hide_index=True
-            )
+        # --- ALTAIR VISUALIZATION (Staggered Timeline) ---
+        # 1. The Main Horizontal Line
+        rule = alt.Chart(df).mark_rule(color="gray", strokeWidth=2).encode(
+            x=alt.X('Date', axis=alt.Axis(format='%d %b %Y', title='Timeline')),
+            y=alt.Y('Zero', axis=None) # Hide Y axis values
+        )
 
-            # 5. ARBITRATOR MODIFICATION
-            if role == 'arbitrator':
-                st.divider()
-                with st.expander("Modify Schedule (Arbitrator Only)"):
-                    with st.form("mod_schedule"):
-                        event_to_mod = st.selectbox("Select Event to Move", df['event'].unique())
-                        new_date = st.date_input("New Date")
-                        reason = st.text_input("Reason for Change")
+        # 2. The Vertical "Stems" connecting points to the line
+        stems = alt.Chart(df).mark_rule(color="lightgray").encode(
+            x='Date',
+            y='Zero',
+            y2='Height'
+        )
+
+        # 3. The Circles (Events)
+        points = alt.Chart(df).mark_circle(size=100).encode(
+            x='Date',
+            y='Height',
+            color=alt.Color('Status', scale=alt.Scale(domain=['Completed', 'Upcoming'], range=['#28a745', '#007bff'])),
+            tooltip=['event', 'current_date', 'owner', 'logistics']
+        )
+
+        # 4. The Text Labels (Event Names)
+        text = alt.Chart(df).mark_text(align='center', baseline='middle', dy=-15).encode(
+            x='Date',
+            y='Height',
+            text='event'
+        )
+
+        final_chart = (rule + stems + points + text).properties(height=300).interactive()
+        
+        st.altair_chart(final_chart, use_container_width=True)
+
+        # --- DETAILED TABLE ---
+        st.markdown("### Detailed Schedule")
+        display_cols = ['event', 'current_date', 'owner', 'logistics', 'Status']
+        valid_cols = [c for c in display_cols if c in df.columns]
+        
+        st.dataframe(
+            df[valid_cols], 
+            use_container_width=True,
+            column_config={
+                "event": "Event Name",
+                "current_date": "Date",
+                "owner": "Responsible Party",
+                "logistics": "Logistics / Instructions",
+                "Status": st.column_config.TextColumn("Status", width="small"),
+            },
+            hide_index=True
+        )
+
+        # --- ARBITRATOR CONTROLS (Add & Modify) ---
+        if role == 'arbitrator':
+            st.divider()
+            st.subheader("Manage Timetable")
+            
+            c_mod, c_add = st.columns(2)
+            
+            # 1. MODIFY EXISTING
+            with c_mod:
+                with st.container(border=True):
+                    st.write("**Modify Existing Event**")
+                    event_to_mod = st.selectbox("Select Event", df['event'].unique(), key="mod_sel")
+                    new_date = st.date_input("New Date", key="mod_date")
+                    reason = st.text_input("Reason for Change", key="mod_reason")
+                    
+                    if st.button("Update Event"):
+                        for e in timeline:
+                            if e.get('event') == event_to_mod:
+                                e['current_date'] = str(new_date)
+                                if 'history' not in e: e['history'] = []
+                                e['history'].append(f"Moved to {new_date}. Reason: {reason}")
                         
-                        if st.form_submit_button("Update Schedule"):
-                            # Update logic in list of dicts
-                            for e in timeline:
-                                if e.get('event') == event_to_mod:
-                                    # Handle old data keys if needed
-                                    if 'current_date' not in e: e['current_date'] = e.get('date')
-                                    
-                                    old_date = e['current_date']
-                                    e['current_date'] = str(new_date)
-                                    if 'history' not in e: e['history'] = []
-                                    e['history'].append(f"Moved from {old_date} to {new_date} by Tribunal. Reason: {reason}")
-                            
-                            save_complex_data("timeline", timeline)
-                            send_email_notification(get_party_emails(), "Timetable Updated", f"The Tribunal has moved '{event_to_mod}' to {new_date}.\nReason: {reason}")
-                            st.success("Schedule updated and parties notified.")
-                            st.rerun()
-        else:
-            st.error("Timeline data format is invalid. Please regenerate PO1 in Drafting Engine to fix.")
+                        save_complex_data("timeline", timeline)
+                        send_email_notification(get_party_emails(), "Timetable Updated", f"The Tribunal has moved '{event_to_mod}' to {new_date}.\nReason: {reason}")
+                        st.success("Updated & Notified.")
+                        st.rerun()
+
+            # 2. ADD NEW EVENT
+            with c_add:
+                with st.container(border=True):
+                    st.write("**Add New Event**")
+                    new_evt_name = st.text_input("Event Name", key="add_name")
+                    new_evt_date = st.date_input("Event Date", key="add_date")
+                    new_evt_owner = st.selectbox("Responsible Party", ["Claimant", "Respondent", "Both", "Tribunal"], key="add_owner")
+                    new_evt_log = st.text_input("Logistics (Venue/Instructions)", key="add_log")
+                    
+                    if st.button("Add to Timeline"):
+                        new_entry = {
+                            "id": f"custom_{int(datetime.now().timestamp())}",
+                            "event": new_evt_name,
+                            "original_date": str(new_evt_date),
+                            "current_date": str(new_evt_date),
+                            "owner": new_evt_owner,
+                            "status": "Upcoming",
+                            "logistics": new_evt_log,
+                            "history": ["Created manually by Tribunal"]
+                        }
+                        timeline.append(new_entry)
+                        save_complex_data("timeline", timeline)
+                        send_email_notification(get_party_emails(), "New Event Added", f"The Tribunal has added a new event: '{new_evt_name}' on {new_evt_date}.")
+                        st.success("Event Added & Notified.")
+                        st.rerun()
 
 # --- TAB 2: EXTENSION OF TIME (EoT) ---
 with tab2:
@@ -125,10 +200,9 @@ with tab2:
     # Request Form (Parties)
     if role in ['claimant', 'respondent']:
         with st.form("eot_form"):
-            # Filter safe list
             events = [e['event'] for e in timeline if 'event' in e]
             target_event = st.selectbox("Request Delay For", events)
-            reason_text = st.text_area("Reason for Request (e.g., Unforeseen circumstances)")
+            reason_text = st.text_area("Reason for Request")
             requested_date = st.date_input("Proposed New Date")
             
             if st.form_submit_button("Submit Request"):
@@ -163,7 +237,6 @@ with tab2:
                     if c3.button("Approve", key=f"app_{i}"):
                         req['status'] = "Approved"
                         req['tribunal_decision'] = decision_reason
-                        # Update Timeline
                         for e in timeline:
                             if e.get('event') == req['event']:
                                 e['current_date'] = req['proposed_date']
@@ -172,14 +245,14 @@ with tab2:
                         
                         save_complex_data("delays", delays)
                         save_complex_data("timeline", timeline)
-                        send_email_notification(get_party_emails(), f"EoT Approved: {req['event']}", f"The Tribunal has approved the delay to {req['proposed_date']}.\nReason: {decision_reason}")
+                        send_email_notification(get_party_emails(), f"EoT Approved: {req['event']}", f"Delay approved to {req['proposed_date']}.\nReason: {decision_reason}")
                         st.rerun()
                         
                     if c3.button("Deny", key=f"den_{i}"):
                         req['status'] = "Denied"
                         req['tribunal_decision'] = decision_reason
                         save_complex_data("delays", delays)
-                        send_email_notification(get_party_emails(), f"EoT Denied: {req['event']}", f"The Tribunal has denied the delay.\nReason: {decision_reason}")
+                        send_email_notification(get_party_emails(), f"EoT Denied: {req['event']}", f"Delay denied.\nReason: {decision_reason}")
                         st.rerun()
     else:
         st.info("No extension requests pending.")
