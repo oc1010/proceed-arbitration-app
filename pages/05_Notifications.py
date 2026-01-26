@@ -1,5 +1,5 @@
 import streamlit as st
-from db import load_complex_data, send_notification
+from db import load_complex_data, send_email_notification
 
 st.set_page_config(page_title="Notifications", layout="wide")
 role = st.session_state.get('user_role')
@@ -22,18 +22,15 @@ all_notifs = data.get("notifications", [])
 
 # 1. INBOX
 st.subheader("Received Notifications")
-# Filter: User sees msg if their role is in 'to_roles' OR if they are Admin (Arbitrator/LCIA)
 my_msgs = [n for n in all_notifs if role in n.get('to_roles', []) or role in ['arbitrator', 'lcia']]
 
 if my_msgs:
-    for msg in reversed(my_msgs): # Newest first
+    for msg in reversed(my_msgs): 
         with st.container(border=True):
             c1, c2 = st.columns([4, 1])
             c1.markdown(f"### {msg['subject']}")
             c1.write(msg.get('body'))
-            
             c2.caption(f"📅 {msg['date']}")
-            # Format recipients nicely
             recip_str = ", ".join([r.title() for r in msg.get('to_roles', [])])
             c2.info(f"To: {recip_str}")
 else:
@@ -51,7 +48,14 @@ if role in ['arbitrator', 'lcia']:
         
         if st.form_submit_button("Send Notification"):
             if recips and subj and body:
-                send_notification(recips, subj, body)
+                # Use a dummy list of emails for manual sends, or fetch if needed
+                from db import load_responses
+                p2 = load_responses("phase2")
+                emails = []
+                if 'claimant' in recips: emails.append(p2.get('claimant', {}).get('contact_email'))
+                if 'respondent' in recips: emails.append(p2.get('respondent', {}).get('contact_email'))
+                
+                send_email_notification(emails, subj, body)
                 st.success("Notification sent successfully.")
                 st.rerun()
             else:
