@@ -101,7 +101,6 @@ def load_structure(phase="phase2"):
     data = load_full_config()
     return data.get(phase, [])
 
-# --- MISSING FUNCTIONS RESTORED HERE ---
 def get_release_status():
     data = load_full_config()
     return {
@@ -114,7 +113,6 @@ def set_release_status(phase, status=True):
     current[f"{phase}_released"] = status
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current, headers=HEADERS)
     load_full_config.clear()
-# ---------------------------------------
 
 def save_structure(new_questions, phase="phase2"):
     current = load_full_config()
@@ -157,14 +155,43 @@ def save_complex_data(key, sub_data):
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full, headers=HEADERS)
     load_complex_data.clear()
 
+# --- RESET LOGIC (UPDATED) ---
 def reset_database():
+    """
+    Resets the demo state but PRESERVES the questionnaire questions.
+    1. Structure Bin: Keeps questions, resets 'released' flags to False.
+    2. Response Bin: Wipes all answers.
+    3. Time/Complex Bin: Wipes timeline, logs, costs.
+    """
+    # 1. READ CURRENT QUESTIONS (To preserve them)
+    current_config = load_full_config()
+    p1_questions = current_config.get("phase1", [])
+    p2_questions = current_config.get("phase2", [])
+    
+    # 2. PREPARE CLEAN CONFIG (With questions, but unreleased)
+    clean_config = {
+        "phase1": p1_questions,
+        "phase2": p2_questions,
+        "phase1_released": False,
+        "phase2_released": False
+    }
+    
+    # 3. PREPARE EMPTY DATA FOR OTHER BINS
+    empty_responses = {"claimant": {}, "respondent": {}}
     empty_complex = {
         "timeline": [], "delays": [], "notifications": [],
         "doc_prod": {"claimant": [], "respondent": []}, 
         "costs": {"claimant_log": [], "respondent_log": [], "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, "app_tagging": []}
     }
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
+
+    # 4. OVERWRITE DATABASE
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=clean_config, headers=HEADERS)
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json=empty_responses, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=empty_complex, headers=HEADERS)
-    load_full_config.clear(); load_responses.clear(); load_complex_data.clear()
+    
+    # 5. CLEAR CACHE
+    load_full_config.clear()
+    load_responses.clear()
+    load_complex_data.clear()
+    
     return True
