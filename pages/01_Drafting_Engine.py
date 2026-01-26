@@ -30,12 +30,13 @@ with st.sidebar:
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- 1. INITIALIZE SESSION STATE (Anti-Jump Fix) ---
+# --- 1. INITIALIZE SESSION STATE ---
+# CRITICAL FIX: Unique keys for every field to prevent 'DuplicateKey' crashes.
 DEFAULTS = {
     'de_case_number': 'ARB/24/001',
     'de_seat': 'London',
     'de_law': 'English Law',
-    'de_meeting_date': date.today(), # FIXED: Unique key for meeting date
+    'de_meeting_date': date.today(), # Renamed from de_d1 to avoid conflict
     'de_claimant_rep1': '', 'de_claimant_rep2': '',
     'de_claimant_addr': '', 'de_claimant_contact': '',
     'de_resp_rep1': '', 'de_resp_rep2': '',
@@ -55,18 +56,21 @@ DEFAULTS = {
     'de_style': 'Memorial', 
     'de_bifurc_status': 'not bifurcated',
     'de_inst': 'LCIA',
-    # Timetable Dates
+    # Standard Dates
     'de_d1': date.today(), 
     'de_d2': date.today() + timedelta(weeks=4),
     'de_d3': date.today() + timedelta(weeks=6), 
     'de_d8': date.today() + timedelta(weeks=10),
-    'de_d9': date.today() + timedelta(weeks=14), 
-    'de_d10': date.today() + timedelta(weeks=18),
-    'de_d12': date.today() + timedelta(weeks=22), 
-    'de_d14': date.today() + timedelta(weeks=24)
+    # Conditional Dates (Memorial Style)
+    'de_d9_mem': date.today() + timedelta(weeks=14), 
+    'de_d10_mem': date.today() + timedelta(weeks=18),
+    'de_d12_mem': date.today() + timedelta(weeks=22),
+    # Conditional Dates (Pleading Style)
+    'de_d9_pl': date.today() + timedelta(weeks=14), 
+    'de_d10_pl': date.today() + timedelta(weeks=18),
+    'de_d14_pl': date.today() + timedelta(weeks=24)
 }
 
-# Initialize state if missing
 for key, default_val in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default_val
@@ -161,14 +165,20 @@ def sync_timeline_to_phase4(style):
     ]
     
     if style == "Memorial":
-        d9, d10, d12 = st.session_state.de_d9, st.session_state.de_d10, st.session_state.de_d12
+        # Use specific memory keys
+        d9 = st.session_state.de_d9_mem
+        d10 = st.session_state.de_d10_mem
+        d12 = st.session_state.de_d12_mem
         new_events.extend([
             {"date": str(d9), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
             {"date": str(d10), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
             {"date": str(d12), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
         ])
     else:
-        d9, d10, d14 = st.session_state.de_d9, st.session_state.de_d10, st.session_state.de_d14
+        # Use specific pleading keys
+        d9 = st.session_state.de_d9_pl
+        d10 = st.session_state.de_d10_pl
+        d14 = st.session_state.de_d14_pl
         new_events.extend([
             {"date": str(d9), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
             {"date": str(d10), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
@@ -349,22 +359,16 @@ with tabs[3]:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Claimant")
-        rep_info_c = resp_p2.get('claimant', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
         st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
         st.text_area("Client Address (Claimant)", key="de_claimant_addr")
-        if rep_info_c and rep_info_c != "Pending" and not st.session_state.de_claimant_contact:
-             st.session_state.de_claimant_contact = rep_info_c
         st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
         
     with c2:
         st.markdown("### Respondent")
-        rep_info_r = resp_p2.get('respondent', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
         st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
         st.text_area("Client Address (Respondent)", key="de_resp_addr")
-        if rep_info_r and rep_info_r != "Pending" and not st.session_state.de_resp_contact:
-             st.session_state.de_resp_contact = rep_info_r
         st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
 
 # --- TAB 5: TRIBUNAL ---
@@ -397,13 +401,15 @@ with tabs[5]:
         st.date_input("8. Document Production", key="de_d8")
     with c2:
         if proc_style == "Memorial":
-            st.date_input("9. Statement of Reply", key="de_d9")
-            st.date_input("10. Statement of Rejoinder", key="de_d10")
-            st.date_input("12. Oral Hearing", key="de_d12")
+            # FIXED: Unique keys for Memorial
+            st.date_input("9. Statement of Reply", key="de_d9_mem")
+            st.date_input("10. Statement of Rejoinder", key="de_d10_mem")
+            st.date_input("12. Oral Hearing", key="de_d12_mem")
         else:
-            st.date_input("9. Witness Statements", key="de_d9")
-            st.date_input("10. Expert Reports", key="de_d10")
-            st.date_input("14. Oral Hearing", key="de_d14")
+            # FIXED: Unique keys for Pleading
+            st.date_input("9. Witness Statements", key="de_d9_pl")
+            st.date_input("10. Expert Reports", key="de_d10_pl")
+            st.date_input("14. Oral Hearing", key="de_d14_pl")
 
 # --- TAB 7: EVIDENCE ---
 with tabs[6]:
@@ -499,10 +505,16 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
         st.toast(f"System Update: Synced {count} events to Smart Timeline.")
         
         # 2. Build final context
+        # Construct variable dictionary with correct keys
+        style = st.session_state.de_style
+        d9 = st.session_state.de_d9_mem if style == "Memorial" else st.session_state.de_d9_pl
+        d10 = st.session_state.de_d10_mem if style == "Memorial" else st.session_state.de_d10_pl
+        d_final = st.session_state.de_d12_mem if style == "Memorial" else st.session_state.de_d14_pl
+
         final_context = {
             'Case_Number': st.session_state.de_case_number,
             'seat_of_arbitration': st.session_state.de_seat,
-            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"), # Corrected
+            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"), 
             'governing_law_of_contract': st.session_state.de_law,
             'claimant_rep_1': st.session_state.de_claimant_rep1,
             'claimant_rep_2': st.session_state.de_claimant_rep2,
@@ -535,22 +547,17 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
             'time_abbreviations': st.session_state.de_time_abbr,
             'time_confirm_contact': st.session_state.de_time_contact,
             'time_notify_counsel': st.session_state.de_time_new_counsel,
-            # Dates
+            # Standard Dates
             'deadline_01': st.session_state.de_d1.strftime("%d %B %Y"),
             'deadline_02': st.session_state.de_d2.strftime("%d %B %Y"),
             'deadline_03': st.session_state.de_d3.strftime("%d %B %Y"),
             'deadline_08': st.session_state.de_d8.strftime("%d %B %Y"),
+            # Conditional Dates
+            'deadline_09': d9.strftime("%d %B %Y"),
+            'deadline_10': d10.strftime("%d %B %Y"),
+            'deadline_12': d_final.strftime("%d %B %Y") if style == "Memorial" else "N/A",
+            'deadline_14': d_final.strftime("%d %B %Y") if style == "Pleading" else "N/A"
         }
-        
-        # Add conditional dates
-        if st.session_state.de_style == "Memorial":
-            final_context['deadline_09'] = st.session_state.de_d9.strftime("%d %B %Y")
-            final_context['deadline_10'] = st.session_state.de_d10.strftime("%d %B %Y")
-            final_context['deadline_12'] = st.session_state.de_d12.strftime("%d %B %Y")
-        else:
-            final_context['deadline_09'] = st.session_state.de_d9.strftime("%d %B %Y")
-            final_context['deadline_10'] = st.session_state.de_d10.strftime("%d %B %Y")
-            final_context['deadline_14'] = st.session_state.de_d14.strftime("%d %B %Y")
 
         try:
             doc = DocxTemplate(template_path)
