@@ -31,13 +31,11 @@ with st.sidebar:
 st.title("Procedural Order No. 1 | Drafting Engine")
 
 # --- 1. INITIALIZE SESSION STATE (Anti-Jump Fix) ---
-# This block ensures these variables exist before any widget tries to use them.
-# We use a specific prefix 'de_' (Drafting Engine) for all keys to ensure uniqueness.
-
 DEFAULTS = {
     'de_case_number': 'ARB/24/001',
     'de_seat': 'London',
     'de_law': 'English Law',
+    'de_meeting_date': date.today(), # FIXED: Unique key for meeting date
     'de_claimant_rep1': '', 'de_claimant_rep2': '',
     'de_claimant_addr': '', 'de_claimant_contact': '',
     'de_resp_rep1': '', 'de_resp_rep2': '',
@@ -54,10 +52,10 @@ DEFAULTS = {
     'de_hours': '09:30 - 17:30',
     'de_agenda': '', 'de_prehear': '',
     'de_time_abbr': '7 days', 'de_time_contact': '7 days', 'de_time_new_counsel': 'immediately',
-    'de_style': 'Memorial', # Default style
+    'de_style': 'Memorial', 
     'de_bifurc_status': 'not bifurcated',
     'de_inst': 'LCIA',
-    # Dates
+    # Timetable Dates
     'de_d1': date.today(), 
     'de_d2': date.today() + timedelta(weeks=4),
     'de_d3': date.today() + timedelta(weeks=6), 
@@ -150,7 +148,6 @@ def display_hint(key):
         st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
 def sync_timeline_to_phase4(style):
-    # Retrieve dates from session state
     d1 = st.session_state.de_d1
     d2 = st.session_state.de_d2
     d3 = st.session_state.de_d3
@@ -327,11 +324,11 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("General Details")
     c1, c2 = st.columns(2)
-    # Explicit keys linked to DEFAULTS
     st.text_input("Case Reference Number", key="de_case_number")
     st.text_input("Seat of Arbitration", key="de_seat")
     
-    st.date_input("First Procedural Meeting Date", key="de_d1") 
+    # FIXED: Unique key 'de_meeting_date' instead of 'de_d1'
+    st.date_input("First Procedural Meeting Date", key="de_meeting_date") 
     
     st.text_input("Governing Law", key="de_law")
     st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst")
@@ -352,16 +349,22 @@ with tabs[3]:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Claimant")
+        rep_info_c = resp_p2.get('claimant', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
         st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
         st.text_area("Client Address (Claimant)", key="de_claimant_addr")
+        if rep_info_c and rep_info_c != "Pending" and not st.session_state.de_claimant_contact:
+             st.session_state.de_claimant_contact = rep_info_c
         st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
         
     with c2:
         st.markdown("### Respondent")
+        rep_info_r = resp_p2.get('respondent', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
         st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
         st.text_area("Client Address (Respondent)", key="de_resp_addr")
+        if rep_info_r and rep_info_r != "Pending" and not st.session_state.de_resp_contact:
+             st.session_state.de_resp_contact = rep_info_r
         st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
 
 # --- TAB 5: TRIBUNAL ---
@@ -384,7 +387,6 @@ with tabs[5]:
     st.subheader("Procedural Timetable")
     st.markdown("#### Style Preference")
     display_hint("style")
-    # Access style directly from session state
     proc_style = st.radio("Select Style", ["Memorial", "Pleading"], horizontal=True, key="de_style")
     
     c1, c2 = st.columns(2)
@@ -492,16 +494,15 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
     if not os.path.exists(template_path):
         st.error(f"System Error: Template file '{template_path}' not found. Please upload it to GitHub.")
     else:
-        # 1. Sync dates to Phase 4
-        # We access the dates directly from session state now
+        # 1. Sync dates
         count = sync_timeline_to_phase4(st.session_state.de_style)
         st.toast(f"System Update: Synced {count} events to Smart Timeline.")
         
-        # 2. Build final context dict from Session State values for the DOCX
-        # This mapping ensures the docxtpl gets the exact variable names it expects
+        # 2. Build final context
         final_context = {
             'Case_Number': st.session_state.de_case_number,
             'seat_of_arbitration': st.session_state.de_seat,
+            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"), # Corrected
             'governing_law_of_contract': st.session_state.de_law,
             'claimant_rep_1': st.session_state.de_claimant_rep1,
             'claimant_rep_2': st.session_state.de_claimant_rep2,
