@@ -9,6 +9,7 @@ if role not in ['lcia', 'arbitrator']:
     st.error("Access Denied")
     st.stop()
 
+# --- DETERMINE PHASE ---
 if role == 'lcia':
     CURRENT_PHASE = "phase1"
     PAGE_TITLE = "Phase 1: Pre-Tribunal Appointment Questionnaire"
@@ -20,6 +21,7 @@ def logout():
     st.session_state['user_role'] = None
     st.switch_page("main.py")
 
+# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     if st.button("Logout", use_container_width=True): logout()
@@ -31,14 +33,18 @@ with st.sidebar:
     else:
         st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
         st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
-        st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
 
 st.title(f"✏️ {PAGE_TITLE}")
 
+# --- RELEASE STATUS ---
 status = get_release_status()
 is_released = status.get(CURRENT_PHASE, False)
 
 # --- MASTER LIST: PHASE 1 (LCIA) ---
+# Source: phase1_questionaire.docx
 DEFAULTS_PHASE_1 = [
     {
         "id": "p1_duration", 
@@ -120,12 +126,26 @@ DEFAULTS_PHASE_1 = [
             "**Yes:** We prefer a dedicated third-party platform.", 
             "**No:** Email and standard file transfer service (Dropbox / ShareFile) is sufficient."
         ]
+    },
+    {
+        "id": "p1_contact", 
+        "question": "10. Contact Email for Notifications", 
+        "type": "text_area", 
+        "options": ["Enter primary email..."]
     }
 ]
 
 # --- MASTER LIST: PHASE 2 (ARBITRATOR) ---
+# Source: questionnaire.docx
 DEFAULTS_PHASE_2 = [
-    # I. WRITTEN SUBMISSIONS
+    # EMAIL COLLECTION (CRITICAL FOR PHASE 4)
+    {
+        "id": "contact_email", 
+        "question": "Primary Contact Email (For Timeline Reminders)", 
+        "type": "text_area", 
+        "options": ["Enter email..."]
+    },
+    # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
     {
         "id": "style", 
         "question": "1. Style of Written Submissions", 
@@ -145,7 +165,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
     
-    # II. EVIDENCE
+    # II. DOCUMENT PRODUCTION & EVIDENCE
     {
         "id": "doc_prod", 
         "question": "3. Applicable Guidelines (Evidence)", 
@@ -178,7 +198,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # III. ELECTRONIC PROTOCOLS
+    # III. ELECTRONIC PROTOCOLS & DATA PROTECTION
     {
         "id": "platform", 
         "question": "6. Case Management Platform", 
@@ -207,7 +227,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # IV. COSTS
+    # IV. COSTS & FUNDING
     {
         "id": "cost_allocation", 
         "question": "9. Cost Allocation Methodology", 
@@ -246,7 +266,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # V. TRIBUNAL ASSISTANCE
+    # V. TRIBUNAL ASSISTANCE & LOGISTICS
     {
         "id": "secretary", 
         "question": "13. Tribunal Secretary", 
@@ -258,7 +278,7 @@ DEFAULTS_PHASE_2 = [
     },
     {
         "id": "sec_fees", 
-        "question": "14. Tribunal Secretary Fees", 
+        "question": "14. Tribunal Secretary Fees (if Option A selected)", 
         "type": "radio", 
         "options": [
             "**Option A: Standard LCIA (£75 - £175 / hr).** Hourly rate between £75 to £175 (per standard LCIA Schedule of Costs).",
@@ -276,7 +296,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # VI. PARTY DETAILS
+    # VI. PARTY & COUNSEL DETAILS
     {
         "id": "reps_info", 
         "question": "16. Authorised Representatives (LCIA Art. 18)", 
@@ -293,10 +313,10 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # VII. HEARING LOGISTICS
+    # VII. HEARING LOGISTICS & TIMING
     {
         "id": "deadline_timezone", 
-        "question": "18. Definition of 'Deadline'", 
+        "question": "18. Definition of 'Deadline' (Timezone)", 
         "type": "radio", 
         "options": [
             "**Option A: Time of the Seat.** Time of the Seat of Arbitration (e.g., 17:00 London time).",
@@ -323,7 +343,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # VIII. LIMITS
+    # VIII. LIMITS ON SUBMISSIONS
     {
         "id": "limits_submission", 
         "question": "21. Page Limits for Written Submissions", 
@@ -344,7 +364,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # IX. CONSOLIDATION
+    # IX. COMPLEXITY & CONSOLIDATION
     {
         "id": "consolidation", 
         "question": "23. Consolidation and Concurrent Conduct", 
@@ -388,10 +408,10 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XII. EXPERTS
+    # XII. EXPERT EVIDENCE PROTOCOLS
     {
         "id": "expert_meeting", 
-        "question": "27. Meetings of Experts", 
+        "question": "27. Meetings of Experts & Joint Reports", 
         "type": "radio", 
         "options": [
             "**Option A: Joint Report.** Expert counterparts must meet and produce a Joint Report identifying areas of agreement and disagreement before the hearing.",
@@ -417,7 +437,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XIII. AWARD
+    # XIII. AWARD SPECIFICS
     {
         "id": "sign_award", 
         "question": "30. Electronic Signatures on the Award", 
@@ -457,7 +477,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XIV. TRANSCRIPTS
+    # XIV. HEARING LOGISTICS & TRANSCRIPTS
     {
         "id": "transcription", 
         "question": "34. Transcription Services", 
@@ -480,7 +500,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XV. PRIVILEGE
+    # XV. PRIVILEGE & DOCUMENT PRODUCTION
     {
         "id": "privilege_std", 
         "question": "36. Standard of Legal Privilege", 
@@ -501,7 +521,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XVI. CONFIDENTIALITY
+    # XVI. CONFIDENTIALITY & TRANSPARENCY
     {
         "id": "publication", 
         "question": "38. Publication of the Award (Sourcebook Topic 46)", 
@@ -513,7 +533,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XVII. DISABILITY
+    # XVII. DISABILITY ACCOMMODATION
     {
         "id": "disability", 
         "question": "39. Accommodations for Participants", 
@@ -537,7 +557,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XIX. ETHICS
+    # XIX. ETHICS & COUNSEL CONDUCT
     {
         "id": "ethics", 
         "question": "41. Guidelines on Party Representation", 
@@ -548,7 +568,7 @@ DEFAULTS_PHASE_2 = [
         ]
     },
 
-    # XX. MEDIATION
+    # XX. AMICABLE SETTLEMENT & MEDIATION
     {
         "id": "mediation", 
         "question": "42. Mediation Window / Settlement Facilitation", 
@@ -585,39 +605,48 @@ if st.button("➕ Add New Question", type="primary"):
 # --- EDITOR FORM ---
 with st.form("editor_form"):
     updated_structure = []
+    st.markdown("### Questions Configuration")
     
     for i, q in enumerate(current_structure):
         with st.container(border=True):
-            c1, c2 = st.columns([3, 1])
-            # Question
-            new_q_text = c1.text_input(f"Q{i+1}", value=q['question'], key=f"q_{i}")
+            c1, c2, c3 = st.columns([6, 2, 1])
             
-            # Type
+            # Question Text
+            new_q_text = c1.text_input(f"Question #{i+1}", value=q['question'], key=f"q_{i}")
+            
+            # Type Selector
             type_map = {"radio": "List (Radio)", "selectbox": "Dropdown", "text_area": "Text Input"}
             rev_map = {"List (Radio)": "radio", "Dropdown": "selectbox", "Text Input": "text_area"}
             curr_type = type_map.get(q['type'], "List (Radio)")
-            new_type_disp = c2.selectbox("Type", list(type_map.values()), index=list(type_map.values()).index(curr_type), key=f"t_{i}")
+            new_type_disp = c2.selectbox("Type", ["List (Radio)", "Dropdown", "Text Input"], index=["List (Radio)", "Dropdown", "Text Input"].index(curr_type), key=f"t_{i}")
             new_type = rev_map[new_type_disp]
             
-            # Options
+            # Include Toggle
+            is_included = c3.checkbox("Include", value=True, key=f"inc_{i}")
+            
+            # Options (SEPARATE EDIT BOXES FOR EACH OPTION)
             new_options = []
             if new_type != "text_area":
                 st.write("**Options:**")
                 existing_opts = q.get('options', [])
-                for idx, o in enumerate(existing_opts):
-                    val = st.text_input(f"Option {idx+1}", value=o, key=f"o_{i}_{idx}")
+                
+                # Render a text input for EACH option individually
+                for idx, opt_text in enumerate(existing_opts):
+                    val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
                     new_options.append(val)
-                # Blank slots logic
+                
+                # Add default blank slots if fewer than 2 options (for new questions)
                 if len(new_options) < 2:
                     for j in range(len(new_options), 2):
                         val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
                         new_options.append(val)
             else:
                 new_options = ["Text Input"]
-            
-            updated_structure.append({
-                "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
-            })
+
+            if is_included:
+                updated_structure.append({
+                    "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
+                })
     
     # ACTION BUTTONS
     c_save, c_release = st.columns([1, 1])
