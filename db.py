@@ -16,6 +16,7 @@ HEADERS = {
 # --- 1. CONFIGURATION ---
 @st.cache_data(ttl=60)
 def load_full_config():
+    """Loads the entire configuration object."""
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
@@ -36,9 +37,9 @@ def get_release_status():
     return {
         "phase1": data.get("phase1_released", False),
         "phase2": data.get("phase2_released", False),
-        "phase3": data.get("phase3_released", False),
-        "phase4": data.get("phase4_released", True),
-        "phase5": data.get("phase5_released", True)
+        "phase3": data.get("phase3_released", False), # Doc Prod
+        "phase4": data.get("phase4_released", True),  # Timeline (Always active)
+        "phase5": data.get("phase5_released", True)   # Costs (Always active)
     }
 
 def save_structure(new_questions, phase="phase2"):
@@ -55,7 +56,7 @@ def set_release_status(phase, status=True):
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
     load_full_config.clear()
 
-# --- 2. RESPONSES (Questionnaires) ---
+# --- 2. RESPONSES ---
 @st.cache_data(ttl=2)
 def load_responses(phase="phase2"):
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
@@ -80,9 +81,7 @@ def save_responses(new_phase_data, phase="phase2"):
     load_responses.clear()
 
 # --- 3. COMPLEX DATA (Timeline, Docs, Costs) ---
-# We store these in the TIME bin to keep the project simple with fewer bins, 
-# but structured cleanly under separate keys.
-
+# Stored in BIN_TIME to organize dynamic case data
 @st.cache_data(ttl=2)
 def load_complex_data():
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}/latest"
@@ -96,7 +95,7 @@ def load_complex_data():
 
 def save_complex_data(key, sub_data):
     """
-    Updates a specific key (e.g., 'timeline', 'doc_prod', 'costs') without overwriting others.
+    Updates a specific key (e.g., 'timeline', 'doc_prod', 'costs') preserving others.
     """
     full_data = load_complex_data()
     full_data[key] = sub_data
@@ -107,6 +106,7 @@ def save_complex_data(key, sub_data):
 def reset_database():
     empty_complex = {
         "timeline": [], 
+        "delays": [],
         "doc_prod": {"claimant": [], "respondent": []}, 
         "costs": {
             "claimant_log": [], "respondent_log": [], 
