@@ -12,13 +12,16 @@ def logout():
     st.session_state['user_role'] = None
     st.switch_page("main.py")
 
+# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     if st.button("Logout", use_container_width=True): logout()
     st.divider()
     st.page_link("main.py", label="Home")
     st.page_link("pages/00_Fill_Questionnaire.py", label="Fill Questionnaires")
-    st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
+    st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+    st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+    st.page_link("pages/04_Cost_Management.py", label="Cost Management")
 
 st.title("Procedural Questionnaires")
 
@@ -53,7 +56,7 @@ def render_form(phase, name):
                 val = st.text_area("Your Answer:", curr, key=f"{phase}_{q['id']}")
                 new_r[q['id']] = val
             else:
-                # Radio logic
+                # Radio/Select logic
                 idx = 0
                 if curr in q['options']: idx = q['options'].index(curr)
                 elif curr and "Other" in q['options']: idx = q['options'].index("Other")
