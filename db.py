@@ -1,29 +1,59 @@
 import streamlit as st
 import requests
-import json
+import smtplib
+from email.mime.text import MIMEText
+from datetime import datetime
 
 # --- CONFIG ---
-API_KEY = st.secrets["X_MASTER_KEY"]
-BIN_STRUCT = st.secrets["BIN_ID_STRUCT"]
-BIN_RESP = st.secrets["BIN_ID_RESP"]
-BIN_TIME = st.secrets["BIN_ID_TIME"]
+API_KEY = st.secrets.get("X_MASTER_KEY", "")
+BIN_STRUCT = st.secrets.get("BIN_ID_STRUCT", "")
+BIN_RESP = st.secrets.get("BIN_ID_RESP", "")
+BIN_TIME = st.secrets.get("BIN_ID_TIME", "")
 
 HEADERS = {
     "Content-Type": "application/json",
     "X-Master-Key": API_KEY
 }
 
+# --- 0. HELPER: REAL EMAIL SENDER ---
+def send_email_notification(to_emails, subject, body):
+    """
+    Sends a REAL email if ST_MAIL_USER and ST_MAIL_PASSWORD are in secrets.
+    Otherwise, simulates it in the app.
+    """
+    # 1. App Notification
+    st.toast(f"📧 Notification: {subject}", icon="📨")
+    
+    # 2. Real Email Logic
+    smtp_user = st.secrets.get("ST_MAIL_USER")
+    smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
+    
+    if smtp_user and smtp_pass and to_emails:
+        try:
+            msg = MIMEText(body)
+            msg['Subject'] = f"[PROCEED] {subject}"
+            msg['From'] = smtp_user
+            msg['To'] = ", ".join(to_emails)
+
+            # Example for Outlook/Office365. Change server for Gmail (smtp.gmail.com)
+            with smtplib.SMTP('smtp.office365.com', 587) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+            print("Email sent successfully.")
+        except Exception as e:
+            print(f"Email failed: {e}")
+    else:
+        print("Email simulation: No SMTP credentials found in secrets.")
+
 # --- 1. CONFIGURATION ---
 @st.cache_data(ttl=60)
 def load_full_config():
-    """Loads the entire configuration object."""
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            val = resp.json()
-            data = val.get('record')
-            return data if isinstance(data, dict) else {}
+            return resp.json().get('record', {})
     except: pass
     return {}
 
@@ -33,27 +63,24 @@ def load_structure(phase="phase2"):
 
 def get_release_status():
     data = load_full_config()
-    if data is None: data = {}
     return {
         "phase1": data.get("phase1_released", False),
         "phase2": data.get("phase2_released", False),
-        "phase3": data.get("phase3_released", False), # Doc Prod
-        "phase4": data.get("phase4_released", True),  # Timeline (Always active)
-        "phase5": data.get("phase5_released", True)   # Costs (Always active)
+        "phase3": data.get("phase3_released", False),
+        "phase4": data.get("phase4_released", True),
+        "phase5": data.get("phase5_released", True)
     }
 
 def save_structure(new_questions, phase="phase2"):
-    current_data = load_full_config()
-    if current_data is None: current_data = {}
-    current_data[phase] = new_questions
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
+    current = load_full_config()
+    current[phase] = new_questions
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current, headers=HEADERS)
     load_full_config.clear()
 
 def set_release_status(phase, status=True):
-    current_data = load_full_config()
-    if current_data is None: current_data = {}
-    current_data[f"{phase}_released"] = status
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current_data, headers=HEADERS)
+    current = load_full_config()
+    current[f"{phase}_released"] = status
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current, headers=HEADERS)
     load_full_config.clear()
 
 # --- 2. RESPONSES ---
@@ -64,42 +91,35 @@ def load_responses(phase="phase2"):
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
             data = resp.json().get('record')
-            if data is None or "initial_setup" in data: return {"claimant": {}, "respondent": {}}
-            return data.get(phase, {"claimant": {}, "respondent": {}})
+            return data.get(phase, {"claimant": {}, "respondent": {}}) if data else {}
     except: pass
     return {"claimant": {}, "respondent": {}}
 
 def save_responses(new_phase_data, phase="phase2"):
     try:
         resp = requests.get(f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest", headers=HEADERS)
-        current_full_data = resp.json().get('record')
-        if current_full_data is None: current_full_data = {}
-    except: current_full_data = {}
+        current = resp.json().get('record', {})
+    except: current = {}
     
-    current_full_data[phase] = new_phase_data
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json=current_full_data, headers=HEADERS)
+    current[phase] = new_phase_data
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json=current, headers=HEADERS)
     load_responses.clear()
 
 # --- 3. COMPLEX DATA (Timeline, Docs, Costs) ---
-# Stored in BIN_TIME to organize dynamic case data
 @st.cache_data(ttl=2)
 def load_complex_data():
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
         if resp.status_code == 200:
-            data = resp.json().get('record')
-            if isinstance(data, dict): return data
+            return resp.json().get('record', {})
     except: pass
     return {}
 
 def save_complex_data(key, sub_data):
-    """
-    Updates a specific key (e.g., 'timeline', 'doc_prod', 'costs') preserving others.
-    """
-    full_data = load_complex_data()
-    full_data[key] = sub_data
-    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full_data, headers=HEADERS)
+    full = load_complex_data()
+    full[key] = sub_data
+    requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full, headers=HEADERS)
     load_complex_data.clear()
 
 # --- 4. RESET ---
@@ -108,11 +128,7 @@ def reset_database():
         "timeline": [], 
         "delays": [],
         "doc_prod": {"claimant": [], "respondent": []}, 
-        "costs": {
-            "claimant_log": [], "respondent_log": [], 
-            "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, 
-            "app_tagging": []
-        }
+        "costs": {"claimant_log": [], "respondent_log": [], "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, "app_tagging": []}
     }
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
