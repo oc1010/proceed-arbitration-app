@@ -2,7 +2,7 @@ import streamlit as st
 from docxtpl import DocxTemplate
 from io import BytesIO
 from datetime import date, timedelta
-from db import load_responses, save_timeline, reset_database, load_structure
+from db import load_responses, save_complex_data, load_complex_data, load_structure
 import pandas as pd
 import os
 
@@ -19,15 +19,18 @@ with st.sidebar:
     st.page_link("main.py", label="Home")
     st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
     st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
-    st.page_link("pages/02_Smart_Timeline.py", label="Smart Timeline")
+    st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+    st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+    st.page_link("pages/04_Cost_Management.py", label="Cost Management")
     st.divider()
     if st.button("⚠️ Factory Reset", type="secondary"):
+        from db import reset_database
         reset_database()
         st.rerun()
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- INITIALIZE CONTEXT (Prevent KeyError) ---
+# --- INITIALIZE CONTEXT ---
 context = {
     'Case_Number': 'ARB/24/001', 
     'seat_of_arbitration': 'London', 
@@ -59,10 +62,11 @@ context = {
     'time_confirm_contact': '7 days', 
     'time_notify_counsel': 'immediately'
 }
+# Initialize deadlines in context
 for i in range(1, 16):
     context[f"deadline_{i:02d}"] = "TBD"
 
-# --- TOPIC MAP (Expanded for Clarity) ---
+# --- TOPIC MAP ---
 TOPIC_MAP = {
     "style": "1. Style of Written Submissions", 
     "bifurcation": "2. Bifurcation of Proceedings", 
@@ -126,6 +130,7 @@ def clean_text(text):
     return text
 
 def display_hint(key):
+    """Visualizes agreement/conflict status for form inputs."""
     c = resp_p2.get('claimant', {}).get(key, "Pending")
     r = resp_p2.get('respondent', {}).get(key, "Pending")
     topic_title = TOPIC_MAP.get(key, key)
@@ -140,15 +145,36 @@ def display_hint(key):
     else: 
         st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
-def save_schedule(dates, style):
-    events = [{"date": str(dates['d1']), "event": "Statement of Case", "owner": "Claimant", "status": "Pending"}]
-    # Add rest of events logic here if expanding timeline features
-    # For now, minimal sync
-    save_timeline(events)
-    return len(events)
+def sync_timeline_to_phase4(d_vars, style):
+    """Takes dates from drafting engine and pushes to Phase 4 Smart Timeline"""
+    # Base events
+    new_events = [
+        {"date": str(d_vars['d1']), "event": "Statement of Case", "owner": "Claimant", "status": "Pending", "logistics": "Submit via Portal"},
+        {"date": str(d_vars['d2']), "event": "Statement of Defence", "owner": "Respondent", "status": "Pending", "logistics": "Submit via Portal"},
+        {"date": str(d_vars['d3']), "event": "Doc Production Requests", "owner": "Both", "status": "Pending", "logistics": "Use Phase 3 Tab"},
+        {"date": str(d_vars['d8']), "event": "Document Production", "owner": "Both", "status": "Pending", "logistics": "Via Portal"},
+    ]
+    
+    # Conditional events
+    if style == "Memorial":
+        new_events.extend([
+            {"date": str(d_vars['d9']), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
+            {"date": str(d_vars['d10']), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
+            {"date": str(d_vars['d12']), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+        ])
+    else:
+        new_events.extend([
+            {"date": str(d_vars['d9']), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
+            {"date": str(d_vars['d10']), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
+            {"date": str(d_vars['d14']), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+        ])
+    
+    # Save to complex structure
+    save_complex_data("timeline", new_events)
+    return len(new_events)
 
 def render_phase1_table():
-    # Hardcoded map for Phase 1 to ensure order and pretty titles
+    """Renders the pretty Phase 1 table."""
     P1_MAP = {
         "p1_duration": "1. Target Procedural Timetable",
         "p1_qual": "2. Arbitrator Availability",
@@ -209,7 +235,6 @@ def render_phase1_table():
             }
         )
         
-        # Comments section
         for row in table_rows:
             if row["_c_com"] or row["_r_com"]:
                 with st.expander(f"💬 Comments: {row['Question']}"):
@@ -370,6 +395,8 @@ with tabs[5]:
             d['d9'] = st.date_input("9. Witness Statements", date.today() + timedelta(weeks=22))
             d['d10'] = st.date_input("10. Expert Reports", date.today() + timedelta(weeks=26))
             d['d14'] = st.date_input("14. Oral Hearing", date.today() + timedelta(weeks=36))
+    
+    # Store into context
     context['deadline_01'] = d['d1'].strftime("%d %B %Y")
     context['deadline_02'] = d['d2'].strftime("%d %B %Y")
     context['deadline_03'] = d['d3'].strftime("%d %B %Y")
@@ -403,7 +430,6 @@ with tabs[6]:
 # --- TAB 8: HEARING ---
 with tabs[7]:
     st.subheader("Hearing Logistics")
-    display_hint("venue_type")
     display_hint("physical_venue_preference")
     display_hint("interpretation")
     display_hint("chess_clock")
@@ -465,13 +491,16 @@ with tabs[9]:
 st.divider()
 
 # --- GENERATION ---
-if st.button("Generate PO1 & Sync", type="primary"):
+if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
     template_path = "template_po1.docx"
     if not os.path.exists(template_path):
         st.error(f"System Error: Template file '{template_path}' not found. Please upload it to GitHub.")
     else:
-        count = save_schedule(d, proc_style)
+        # Sync dates to Phase 4
+        count = sync_timeline_to_phase4(d, proc_style)
         st.toast(f"System Update: Synced {count} events to Smart Timeline.")
+        
+        # Generate DOCX
         try:
             doc = DocxTemplate(template_path)
             doc.render(context)
