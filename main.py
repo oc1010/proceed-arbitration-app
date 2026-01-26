@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
-from db import load_responses
+from db import load_responses, reset_database
 
 st.set_page_config(page_title="PROCEED Dashboard", layout="wide")
 
-# --- AUTHENTICATION CONFIGURATION ---
-# Simple mock authentication for demonstration purposes.
-# In a real production app, this would check against a secure database.
+# --- AUTHENTICATION ---
 USERS = {
     "lcia": "lcia123", 
     "arbitrator": "arbitrator123", 
@@ -14,12 +12,10 @@ USERS = {
     "respondent": "party123"
 }
 
-# Initialize Session State for User Role if not present
 if 'user_role' not in st.session_state: 
     st.session_state['user_role'] = None
 
 def login():
-    """Validates user credentials and sets the session state."""
     u = st.session_state.get("username", "").strip().lower()
     p = st.session_state.get("password", "").strip()
     if USERS.get(u) == p: 
@@ -28,12 +24,10 @@ def login():
         st.error("Invalid Credentials")
 
 def logout():
-    """Clears the session state and reloads the app."""
     st.session_state['user_role'] = None
     st.rerun()
 
 # --- LOGIN SCREEN ---
-# If no user is logged in, show the login form and stop execution of the rest of the page.
 if st.session_state['user_role'] is None:
     st.title("PROCEED | Secure Gateway")
     c1, c2, c3 = st.columns([1, 2, 1])
@@ -48,18 +42,16 @@ if st.session_state['user_role'] is None:
                 st.rerun()
     st.stop()
 
-# --- LOGGED IN USER CONTEXT ---
+# --- LOGGED IN DASHBOARD ---
 role = st.session_state['user_role']
 
-# --- SIDEBAR NAVIGATION (Persistent) ---
-# This sidebar appears on the Home page and should be replicated in pages for consistency.
+# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     st.divider()
     st.page_link("main.py", label="🏠 Home Dashboard")
-    st.page_link("pages/05_Notifications.py", label="🔔 Notifications") # New Notifications Tab
+    st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
     
-    # Dynamic Navigation Links based on Role
     if role == 'lcia':
         st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
     
@@ -77,20 +69,22 @@ with st.sidebar:
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
 
     st.divider()
+    
+    # --- FACTORY RESET (ARBITRATOR ONLY) ---
+    if role == 'arbitrator':
+        if st.button("⚠️ Factory Reset Demo", type="secondary", use_container_width=True):
+            reset_database()       # Wipes backend (JSONBin)
+            st.session_state.clear() # Wipes frontend (Session State)
+            st.rerun()             # Reloads to Login Screen
+            
     if st.button("Logout", use_container_width=True): 
         logout()
 
-# --- MAIN DASHBOARD CONTENT ---
+# --- MAIN CONTENT ---
 st.title(f"Welcome, {role.title()}")
 st.markdown("### Case Dashboard: ARB/24/001")
-st.info("Select a module below to proceed with your case management tasks.")
 
-# --- DASHBOARD CARDS CONFIGURATION ---
-# Define the available modules for each role.
-# Format: (Icon, Title, Description, Page Path)
 cards = []
-
-# Base card for everyone
 cards.append(("🔔", "Notifications", "View Alerts & Messages", "pages/05_Notifications.py"))
 
 if role == 'lcia':
@@ -113,11 +107,9 @@ elif role in ['claimant', 'respondent']:
         ("💰", "Cost Submission", "Upload Costs & Final Subs.", "pages/04_Cost_Management.py")
     ])
 
-# --- RENDER DASHBOARD GRID ---
-# Uses a 3-column layout to display the cards cleanly.
 cols = st.columns(3)
 for i, (icon, title, desc, link) in enumerate(cards):
-    with cols[i % 3]: # Distribute cards across 3 columns
+    with cols[i % 3]:
         with st.container(border=True):
             st.write(f"### {icon} {title}")
             st.caption(desc)
