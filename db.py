@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 # --- CONFIG ---
@@ -15,78 +16,91 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- 0. CENTRAL NOTIFICATION HANDLER ---
+# --- CENTRAL NOTIFICATION HANDLER ---
 def send_notification(to_roles, subject, body, to_emails=None):
     """
-    1. Sends REAL email via SMTP.
-    2. Logs notification to 'notifications' bin for the in-app tab.
+    Sends a professional email and logs the notification in the app.
     """
-    # A. LOG TO DATABASE (IN-APP)
+    # 1. LOG TO DATABASE (IN-APP)
     try:
-        # Load existing notifications
         full_data = load_complex_data()
         if "notifications" not in full_data: full_data["notifications"] = []
         
-        # Add new entry
         new_note = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "to_roles": to_roles, # list like ['claimant', 'respondent']
+            "to_roles": to_roles, 
             "subject": subject,
             "body": body
         }
         full_data["notifications"].append(new_note)
-        
-        # Save back
         requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full_data, headers=HEADERS)
-        load_complex_data.clear() # Clear cache to show immediately
+        load_complex_data.clear()
     except Exception as e:
         print(f"DB Log Failed: {e}")
 
-    # B. SEND REAL EMAIL
-    # If explicit emails aren't provided, try to fetch from responses
+    # 2. RESOLVE EMAILS
     if not to_emails:
         to_emails = []
         p2 = load_responses("phase2")
+        # Check roles and fetch emails
         if 'claimant' in to_roles:
-            c_mail = p2.get('claimant', {}).get('contact_email')
-            if c_mail: to_emails.append(c_mail)
+            val = p2.get('claimant', {}).get('contact_email')
+            if val: to_emails.append(val)
         if 'respondent' in to_roles:
-            r_mail = p2.get('respondent', {}).get('contact_email')
-            if r_mail: to_emails.append(r_mail)
+            val = p2.get('respondent', {}).get('contact_email')
+            if val: to_emails.append(val)
+        
+        # Remove duplicates to avoid spamming the same inbox multiple times
+        to_emails = list(set(to_emails))
 
-    st.toast(f"🔔 In-App Notification Sent: {subject}")
-
+    # 3. CONSTRUCT PROFESSIONAL EMAIL
     smtp_user = st.secrets.get("ST_MAIL_USER")
     smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
     smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
     smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
 
+    # Professional Template
+    full_body = f"""
+    [AUTOMATIC NOTIFICATION - PROCEED ARBITRATION PLATFORM]
+    
+    Subject: {subject}
+    
+    -------------------------------------------------------
+    {body}
+    -------------------------------------------------------
+    
+    PLEASE DO NOT REPLY DIRECTLY TO THIS EMAIL.
+    For any queries, please reach out to the Arbitrator directly or log in to the PROCEED platform.
+    """
+
     if smtp_user and smtp_pass and to_emails:
         try:
-            msg = MIMEText(body)
-            msg['Subject'] = f"[PROCEED] {subject}"
-            msg['From'] = smtp_user
-            msg['To'] = ", ".join(to_emails)
-
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
+                
+                # Send individually to ensure delivery even if emails are identical or Bcc issues arise
+                for recipient in to_emails:
+                    msg = MIMEMultipart()
+                    msg['From'] = smtp_user
+                    msg['To'] = recipient
+                    msg['Subject'] = f"[PROCEED] {subject}"
+                    msg.attach(MIMEText(full_body, 'plain'))
+                    server.send_message(msg)
             
-            st.toast(f"📧 Email Sent Successfully to {len(to_emails)} recipients.", icon="✅")
+            st.toast(f"📧 Notification sent to {len(to_emails)} recipient(s).", icon="✅")
         except Exception as e:
-            st.error(f"⚠️ Email Failed: {e}") # Show this error to user for debugging
+            st.error(f"⚠️ Email Error: {e}")
     else:
         print("Email skipped: Credentials missing or no recipients.")
 
-# --- 1. CONFIGURATION ---
+# --- DATABASE FUNCTIONS ---
 @st.cache_data(ttl=60)
 def load_full_config():
     url = f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
-        if resp.status_code == 200:
-            return resp.json().get('record', {})
+        if resp.status_code == 200: return resp.json().get('record', {})
     except: pass
     return {}
 
@@ -100,7 +114,6 @@ def save_structure(new_questions, phase="phase2"):
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json=current, headers=HEADERS)
     load_full_config.clear()
 
-# --- 2. RESPONSES ---
 @st.cache_data(ttl=2)
 def load_responses(phase="phase2"):
     url = f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest"
@@ -117,19 +130,16 @@ def save_responses(new_phase_data, phase="phase2"):
         resp = requests.get(f"https://api.jsonbin.io/v3/b/{BIN_RESP}/latest", headers=HEADERS)
         current = resp.json().get('record', {})
     except: current = {}
-    
     current[phase] = new_phase_data
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json=current, headers=HEADERS)
     load_responses.clear()
 
-# --- 3. COMPLEX DATA ---
 @st.cache_data(ttl=2)
 def load_complex_data():
     url = f"https://api.jsonbin.io/v3/b/{BIN_TIME}/latest"
     try:
         resp = requests.get(url, headers=HEADERS)
-        if resp.status_code == 200:
-            return resp.json().get('record', {})
+        if resp.status_code == 200: return resp.json().get('record', {})
     except: pass
     return {}
 
@@ -139,7 +149,6 @@ def save_complex_data(key, sub_data):
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full, headers=HEADERS)
     load_complex_data.clear()
 
-# --- 4. RESET ---
 def reset_database():
     empty_complex = {
         "timeline": [], 
@@ -151,7 +160,6 @@ def reset_database():
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=empty_complex, headers=HEADERS)
-    
     load_full_config.clear()
     load_responses.clear()
     load_complex_data.clear()
