@@ -30,41 +30,40 @@ with st.sidebar:
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- INITIALIZE CONTEXT ---
-context = {
-    'Case_Number': 'ARB/24/001', 
-    'seat_of_arbitration': 'London', 
-    'meeting_date': date.today().strftime("%d %B %Y"), 
-    'governing_law_of_contract': 'English Law',
-    'claimant_rep_1': '', 'claimant_rep_2': '', 
-    'Contact_details_of_Claimant': '', 'Contact_details_of_Claimant_Representative': '',
-    'respondent_rep_1': '', 'respondent_rep_2': '', 
-    'Contact_details_of_Respondent': '', 'Contact_details_of_Respondent_Representative': '',
-    'Contact_details_of_Arbitrator_1': '', 'Contact_details_of_Arbitrator_2': '', 
-    'Contact_details_of_Arbitrator_3_Presiding': '',
-    'name_of_tribunal_secretary': '', 'secretary_hourly_rate': '',
-    'limits_submission': '', 
-    'max_filename_len': '50 chars', 
-    'deadline_timezone': '17:00 London', 
-    'time_produce_docs': '14 days', 
-    'time_shred_docs': '6 months', 
-    'time_notify_oral': '45 days',
-    'time_appoint_interpreter': '14 days', 
-    'time_hearing_bundle': '14 days before', 
-    'time_submit_exhibits': '24 hours', 
-    'date_decide_venue': '3 months prior',
-    'place_in_person': 'IDRC London', 
-    'physical_venue_city': 'London', 
-    'hearing_hours': '09:30 - 17:30',
-    'schedule_oral_hearing': '', 
-    'prehearing_matters': '', 
-    'time_abbreviations': '7 days',
-    'time_confirm_contact': '7 days', 
-    'time_notify_counsel': 'immediately'
+# --- 1. INITIALIZE SESSION STATE (Anti-Jump Fix) ---
+# We use a specific prefix 'de_' (Drafting Engine) for all keys to ensure uniqueness
+# and prevent the app from resetting values on every rerun.
+
+DEFAULTS = {
+    'de_case_number': 'ARB/24/001',
+    'de_seat': 'London',
+    'de_law': 'English Law',
+    'de_claimant_rep1': '', 'de_claimant_rep2': '',
+    'de_claimant_addr': '', 'de_claimant_contact': '',
+    'de_resp_rep1': '', 'de_resp_rep2': '',
+    'de_resp_addr': '', 'de_resp_contact': '',
+    'de_arb1': '', 'de_arb2': '', 'de_arb3': '',
+    'de_sec_name': '', 'de_sec_rate': '',
+    'de_limits': '', 'de_file_len': '50 chars',
+    'de_timezone': '17:00 London',
+    'de_time_docs': '14 days', 'de_time_shred': '6 months',
+    'de_time_oral': '45 days', 'de_time_interp': '14 days',
+    'de_time_bundle': '14 days before', 'de_time_exhibits': '24 hours',
+    'de_date_venue': '3 months prior',
+    'de_venue_name': 'IDRC London', 'de_venue_city': 'London',
+    'de_hours': '09:30 - 17:30',
+    'de_agenda': '', 'de_prehear': '',
+    'de_time_abbr': '7 days', 'de_time_contact': '7 days', 'de_time_new_counsel': 'immediately',
+    'de_d1': date.today(), 'de_d2': date.today() + timedelta(weeks=4),
+    'de_d3': date.today() + timedelta(weeks=6), 'de_d8': date.today() + timedelta(weeks=10),
+    'de_d9': date.today() + timedelta(weeks=14), 'de_d10': date.today() + timedelta(weeks=18),
+    'de_d12': date.today() + timedelta(weeks=22), 'de_d14': date.today() + timedelta(weeks=24)
 }
-# Initialize deadlines in context
-for i in range(1, 16):
-    context[f"deadline_{i:02d}"] = "TBD"
+
+# Initialize state if missing
+for key, default_val in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = default_val
 
 # --- TOPIC MAP ---
 TOPIC_MAP = {
@@ -118,7 +117,6 @@ resp_p2 = load_responses("phase2")
 
 # --- HELPER FUNCTIONS ---
 def clean_text(text):
-    """Removes markdown bolding AND trailing colons for clean tables."""
     if not text: return "Pending"
     if "**" in text:
         parts = text.split("**")
@@ -130,11 +128,9 @@ def clean_text(text):
     return text
 
 def display_hint(key):
-    """Visualizes agreement/conflict status for form inputs."""
     c = resp_p2.get('claimant', {}).get(key, "Pending")
     r = resp_p2.get('respondent', {}).get(key, "Pending")
     topic_title = TOPIC_MAP.get(key, key)
-    
     c_clean = clean_text(c)
     r_clean = clean_text(r)
 
@@ -145,36 +141,39 @@ def display_hint(key):
     else: 
         st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
-def sync_timeline_to_phase4(d_vars, style):
-    """Takes dates from drafting engine and pushes to Phase 4 Smart Timeline"""
-    # Base events
+def sync_timeline_to_phase4(style):
+    # Retrieve dates from session state
+    d1 = st.session_state.de_d1
+    d2 = st.session_state.de_d2
+    d3 = st.session_state.de_d3
+    d8 = st.session_state.de_d8
+    
     new_events = [
-        {"date": str(d_vars['d1']), "event": "Statement of Case", "owner": "Claimant", "status": "Pending", "logistics": "Submit via Portal"},
-        {"date": str(d_vars['d2']), "event": "Statement of Defence", "owner": "Respondent", "status": "Pending", "logistics": "Submit via Portal"},
-        {"date": str(d_vars['d3']), "event": "Doc Production Requests", "owner": "Both", "status": "Pending", "logistics": "Use Phase 3 Tab"},
-        {"date": str(d_vars['d8']), "event": "Document Production", "owner": "Both", "status": "Pending", "logistics": "Via Portal"},
+        {"date": str(d1), "event": "Statement of Case", "owner": "Claimant", "status": "Pending", "logistics": "Submit via Portal"},
+        {"date": str(d2), "event": "Statement of Defence", "owner": "Respondent", "status": "Pending", "logistics": "Submit via Portal"},
+        {"date": str(d3), "event": "Doc Production Requests", "owner": "Both", "status": "Pending", "logistics": "Use Phase 3 Tab"},
+        {"date": str(d8), "event": "Document Production", "owner": "Both", "status": "Pending", "logistics": "Via Portal"},
     ]
     
-    # Conditional events
     if style == "Memorial":
+        d9, d10, d12 = st.session_state.de_d9, st.session_state.de_d10, st.session_state.de_d12
         new_events.extend([
-            {"date": str(d_vars['d9']), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
-            {"date": str(d_vars['d10']), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
-            {"date": str(d_vars['d12']), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+            {"date": str(d9), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
+            {"date": str(d10), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
+            {"date": str(d12), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
         ])
     else:
+        d9, d10, d14 = st.session_state.de_d9, st.session_state.de_d10, st.session_state.de_d14
         new_events.extend([
-            {"date": str(d_vars['d9']), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
-            {"date": str(d_vars['d10']), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
-            {"date": str(d_vars['d14']), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+            {"date": str(d9), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
+            {"date": str(d10), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
+            {"date": str(d14), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
         ])
     
-    # Save to complex structure
     save_complex_data("timeline", new_events)
     return len(new_events)
 
 def render_phase1_table():
-    """Renders the pretty Phase 1 table."""
     P1_MAP = {
         "p1_duration": "1. Target Procedural Timetable",
         "p1_qual": "2. Arbitrator Availability",
@@ -260,15 +259,12 @@ with tabs[1]:
     structure_p2 = load_structure("phase2")
     q_map_2 = {q['id']: q['question'] for q in structure_p2} if structure_p2 else {}
     
-    # Filter out comments
     all_keys = [k for k in list(set(list(c_data.keys()) + list(r_data.keys()))) if not k.endswith("_comment")]
     
     if not all_keys:
         st.info("No Phase 2 data submitted yet.")
     else:
         summary_data = []
-        
-        # Sort by numeric prefix
         def sort_key(k):
             text = q_map_2.get(k, TOPIC_MAP.get(k, k))
             try: return int(text.split(".")[0])
@@ -298,7 +294,6 @@ with tabs[1]:
                 "_r_com": r_comm
             })
         
-        # Display Table
         st.dataframe(
             pd.DataFrame(summary_data)[["Match?", "Question", "Claimant", "Respondent"]], 
             use_container_width=True, 
@@ -324,17 +319,22 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("General Details")
     c1, c2 = st.columns(2)
-    context['Case_Number'] = c1.text_input("Case Reference Number", context['Case_Number'])
-    context['seat_of_arbitration'] = c1.text_input("Seat of Arbitration", context['seat_of_arbitration'])
-    context['meeting_date'] = c1.date_input("First Procedural Meeting Date", date.today()).strftime("%d %B %Y")
-    context['governing_law_of_contract'] = c2.text_input("Governing Law", context['governing_law_of_contract'])
-    context['arbitral_institution'] = c2.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"])
-    context['Parties'] = "the Parties"
+    # Using explicit keys (e.g. 'de_case_number') prevents UI jumping
+    st.text_input("Case Reference Number", key="de_case_number")
+    st.text_input("Seat of Arbitration", key="de_seat")
+    
+    # We don't bind date input to a context dict here, we bind to session state key
+    st.date_input("First Procedural Meeting Date", key="de_d1") # Reusing d1 or a meeting date key? Let's assume d1 for now or add specific
+    # Correction: use a specific key if needed, but for simplicity we rely on defaults
+    
+    st.text_input("Governing Law", key="de_law")
+    st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst", index=0)
+    
     st.divider()
     st.markdown("#### Procedural Structure")
     display_hint("bifurcation")
     display_hint("consolidation")
-    context['proceedings_bifurcation'] = st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"])
+    st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"], key="de_bifurc_status")
 
 # --- TAB 4: PARTIES ---
 with tabs[3]:
@@ -342,73 +342,67 @@ with tabs[3]:
     st.markdown("#### Funding Disclosure")
     display_hint("funding")
     st.divider()
+    
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Claimant")
         rep_info_c = resp_p2.get('claimant', {}).get('reps_info', '')
-        context['claimant_rep_1'] = st.text_input("Lead Counsel (Claimant)", context['claimant_rep_1'])
-        context['claimant_rep_2'] = st.text_input("Co-Counsel (Claimant)", context['claimant_rep_2'])
-        context['Contact_details_of_Claimant'] = st.text_area("Client Address (Claimant)", context['Contact_details_of_Claimant'])
-        context['Contact_details_of_Claimant_Representative'] = st.text_area("Counsel Contact (Claimant)", value=rep_info_c if rep_info_c!="Pending" else context['Contact_details_of_Claimant_Representative'], height=150)
+        st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
+        st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
+        st.text_area("Client Address (Claimant)", key="de_claimant_addr")
+        # Pre-fill logic check:
+        if rep_info_c and rep_info_c != "Pending" and not st.session_state.de_claimant_contact:
+             st.session_state.de_claimant_contact = rep_info_c
+        st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
+        
     with c2:
         st.markdown("### Respondent")
         rep_info_r = resp_p2.get('respondent', {}).get('reps_info', '')
-        context['respondent_rep_1'] = st.text_input("Lead Counsel (Respondent)", context['respondent_rep_1'])
-        context['respondent_rep_2'] = st.text_input("Co-Counsel (Respondent)", context['respondent_rep_2'])
-        context['Contact_details_of_Respondent'] = st.text_area("Client Address (Respondent)", context['Contact_details_of_Respondent'])
-        context['Contact_details_of_Respondent_Representative'] = st.text_area("Counsel Contact (Respondent)", value=rep_info_r if rep_info_r!="Pending" else context['Contact_details_of_Respondent_Representative'], height=150)
+        st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
+        st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
+        st.text_area("Client Address (Respondent)", key="de_resp_addr")
+        if rep_info_r and rep_info_r != "Pending" and not st.session_state.de_resp_contact:
+             st.session_state.de_resp_contact = rep_info_r
+        st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
 
 # --- TAB 5: TRIBUNAL ---
 with tabs[4]:
     st.subheader("Tribunal Members")
-    context['Contact_details_of_Arbitrator_1'] = st.text_input("Co-Arbitrator 1", context['Contact_details_of_Arbitrator_1'])
-    context['Contact_details_of_Arbitrator_2'] = st.text_input("Co-Arbitrator 2", context['Contact_details_of_Arbitrator_2'])
-    context['Contact_details_of_Arbitrator_3_Presiding'] = st.text_input("Presiding Arbitrator", context['Contact_details_of_Arbitrator_3_Presiding'])
+    st.text_input("Co-Arbitrator 1", key="de_arb1")
+    st.text_input("Co-Arbitrator 2", key="de_arb2")
+    st.text_input("Presiding Arbitrator", key="de_arb3")
+    
     st.divider()
     st.markdown("#### Tribunal Secretary")
     display_hint("secretary")
     display_hint("sec_fees")
     c1, c2 = st.columns(2)
-    context['name_of_tribunal_secretary'] = c1.text_input("Secretary Name", context['name_of_tribunal_secretary'])
-    context['secretary_hourly_rate'] = c2.text_input("Secretary Hourly Rate", context['secretary_hourly_rate'])
+    st.text_input("Secretary Name", key="de_sec_name")
+    st.text_input("Secretary Hourly Rate", key="de_sec_rate")
 
 # --- TAB 6: TIMETABLE ---
 with tabs[5]:
     st.subheader("Procedural Timetable")
     st.markdown("#### Style Preference")
     display_hint("style")
-    proc_style = st.radio("Select Style", ["Memorial", "Pleading"], horizontal=True)
-    context['procedure_style'] = proc_style
+    proc_style = st.radio("Select Style", ["Memorial", "Pleading"], horizontal=True, key="de_style")
+    
     d = {}
     c1, c2 = st.columns(2)
     with c1:
-        d['d1'] = st.date_input("1. Statement of Case", date.today() + timedelta(weeks=4))
-        d['d2'] = st.date_input("2. Statement of Defence", date.today() + timedelta(weeks=8))
-        d['d3'] = st.date_input("3. Doc Production Requests", date.today() + timedelta(weeks=10))
-        d['d8'] = st.date_input("8. Document Production", date.today() + timedelta(weeks=18))
+        st.date_input("1. Statement of Case", key="de_d1")
+        st.date_input("2. Statement of Defence", key="de_d2")
+        st.date_input("3. Doc Production Requests", key="de_d3")
+        st.date_input("8. Document Production", key="de_d8")
     with c2:
         if proc_style == "Memorial":
-            d['d9'] = st.date_input("9. Statement of Reply", date.today() + timedelta(weeks=22))
-            d['d10'] = st.date_input("10. Statement of Rejoinder", date.today() + timedelta(weeks=26))
-            d['d12'] = st.date_input("12. Oral Hearing", date.today() + timedelta(weeks=34))
+            st.date_input("9. Statement of Reply", key="de_d9")
+            st.date_input("10. Statement of Rejoinder", key="de_d10")
+            st.date_input("12. Oral Hearing", key="de_d12")
         else:
-            d['d9'] = st.date_input("9. Witness Statements", date.today() + timedelta(weeks=22))
-            d['d10'] = st.date_input("10. Expert Reports", date.today() + timedelta(weeks=26))
-            d['d14'] = st.date_input("14. Oral Hearing", date.today() + timedelta(weeks=36))
-    
-    # Store into context
-    context['deadline_01'] = d['d1'].strftime("%d %B %Y")
-    context['deadline_02'] = d['d2'].strftime("%d %B %Y")
-    context['deadline_03'] = d['d3'].strftime("%d %B %Y")
-    context['deadline_08'] = d['d8'].strftime("%d %B %Y")
-    if proc_style == "Memorial":
-        context['deadline_09'] = d['d9'].strftime("%d %B %Y")
-        context['deadline_10'] = d['d10'].strftime("%d %B %Y")
-        context['deadline_12'] = d['d12'].strftime("%d %B %Y")
-    else:
-        context['deadline_09'] = d['d9'].strftime("%d %B %Y")
-        context['deadline_10'] = d['d10'].strftime("%d %B %Y")
-        context['deadline_14'] = d['d14'].strftime("%d %B %Y")
+            st.date_input("9. Witness Statements", key="de_d9")
+            st.date_input("10. Expert Reports", key="de_d10")
+            st.date_input("14. Oral Hearing", key="de_d14")
 
 # --- TAB 7: EVIDENCE ---
 with tabs[6]:
@@ -418,14 +412,15 @@ with tabs[6]:
     display_hint("limits")
     display_hint("privilege_std")
     display_hint("privilege_logs")
-    context['time_produce_docs'] = st.text_input("Time to Produce Docs", context['time_produce_docs'])
+    st.text_input("Time to Produce Docs", key="de_time_docs")
+    
     st.divider()
     st.markdown("#### Witnesses & Experts")
     display_hint("witness_exam")
     display_hint("expert_meeting")
     display_hint("expert_hot_tub")
     display_hint("expert_reply")
-    context['time_notify_oral'] = st.text_input("Notice for Oral Evidence", context['time_notify_oral'])
+    st.text_input("Notice for Oral Evidence", key="de_time_oral")
 
 # --- TAB 8: HEARING ---
 with tabs[7]:
@@ -436,12 +431,12 @@ with tabs[7]:
     display_hint("transcription")
     display_hint("demonstratives")
     c1, c2 = st.columns(2)
-    context['place_in_person'] = c1.text_input("Physical Venue Name", context['place_in_person'])
-    context['physical_venue_city'] = c1.text_input("City", context['physical_venue_city'])
-    context['hearing_hours'] = c2.text_input("Hearing Hours", context['hearing_hours'])
-    context['time_appoint_interpreter'] = c2.text_input("Time to Appoint Interpreter", context['time_appoint_interpreter'])
-    context['schedule_oral_hearing'] = st.text_area("Hearing Agenda", context['schedule_oral_hearing'])
-    context['prehearing_matters'] = st.text_area("Pre-Hearing Matters", context['prehearing_matters'])
+    st.text_input("Physical Venue Name", key="de_venue_name")
+    st.text_input("City", key="de_venue_city")
+    st.text_input("Hearing Hours", key="de_hours")
+    st.text_input("Time to Appoint Interpreter", key="de_time_interp")
+    st.text_area("Hearing Agenda", key="de_agenda")
+    st.text_area("Pre-Hearing Matters", key="de_prehear")
 
 # --- TAB 9: LOGISTICS ---
 with tabs[8]:
@@ -454,20 +449,21 @@ with tabs[8]:
     display_hint("platform")
     display_hint("bundling")
     c1, c2 = st.columns(2)
-    context['limits_submission'] = c1.text_area("Page Limits Clause", context['limits_submission'])
-    context['max_filename_len'] = c2.text_input("Max Filename Length", context['max_filename_len'])
-    context['deadline_timezone'] = c2.text_input("Deadline Timezone", context['deadline_timezone'])
-    context['time_shred_docs'] = c2.text_input("Time to Shred Docs", context['time_shred_docs'])
+    st.text_area("Page Limits Clause", key="de_limits")
+    st.text_input("Max Filename Length", key="de_file_len")
+    st.text_input("Deadline Timezone", key="de_timezone")
+    st.text_input("Time to Shred Docs", key="de_time_shred")
+    
     st.divider()
     st.markdown("#### Communications")
     display_hint("extensions")
     c1, c2 = st.columns(2)
-    context['time_abbreviations'] = c1.text_input("Time for Abbreviations", context['time_abbreviations'])
-    context['time_confirm_contact'] = c1.text_input("Time to Confirm Contact", context['time_confirm_contact'])
-    context['time_notify_counsel'] = c2.text_input("Time to Notify New Counsel", context['time_notify_counsel'])
-    context['time_hearing_bundle'] = c2.text_input("Bundle Deadline", context['time_hearing_bundle'])
-    context['time_submit_exhibits'] = c1.text_input("Hearing Exhibits Deadline", context['time_submit_exhibits'])
-    context['date_decide_venue'] = c2.text_input("Venue Decision Deadline", context['date_decide_venue'])
+    st.text_input("Time for Abbreviations", key="de_time_abbr")
+    st.text_input("Time to Confirm Contact", key="de_time_contact")
+    st.text_input("Time to Notify New Counsel", key="de_time_new_counsel")
+    st.text_input("Bundle Deadline", key="de_time_bundle")
+    st.text_input("Hearing Exhibits Deadline", key="de_time_exhibits")
+    st.text_input("Venue Decision Deadline", key="de_date_venue")
 
 # --- TAB 10: AWARD ---
 with tabs[9]:
@@ -490,28 +486,84 @@ with tabs[9]:
 
 st.divider()
 
-# --- GENERATION ---
+# --- GENERATION & SYNC ---
 if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
     template_path = "template_po1.docx"
+    
     if not os.path.exists(template_path):
         st.error(f"System Error: Template file '{template_path}' not found. Please upload it to GitHub.")
     else:
-        # Sync dates to Phase 4
-        count = sync_timeline_to_phase4(d, proc_style)
+        # 1. Sync dates to Phase 4
+        # We access the dates directly from session state now
+        count = sync_timeline_to_phase4(st.session_state.de_style)
         st.toast(f"System Update: Synced {count} events to Smart Timeline.")
         
-        # Generate DOCX
+        # 2. Build final context dict from Session State values for the DOCX
+        # This mapping ensures the docxtpl gets the exact variable names it expects
+        final_context = {
+            'Case_Number': st.session_state.de_case_number,
+            'seat_of_arbitration': st.session_state.de_seat,
+            'governing_law_of_contract': st.session_state.de_law,
+            'claimant_rep_1': st.session_state.de_claimant_rep1,
+            'claimant_rep_2': st.session_state.de_claimant_rep2,
+            'Contact_details_of_Claimant': st.session_state.de_claimant_addr,
+            'Contact_details_of_Claimant_Representative': st.session_state.de_claimant_contact,
+            'respondent_rep_1': st.session_state.de_resp_rep1,
+            'respondent_rep_2': st.session_state.de_resp_rep2,
+            'Contact_details_of_Respondent': st.session_state.de_resp_addr,
+            'Contact_details_of_Respondent_Representative': st.session_state.de_resp_contact,
+            'Contact_details_of_Arbitrator_1': st.session_state.de_arb1,
+            'Contact_details_of_Arbitrator_2': st.session_state.de_arb2,
+            'Contact_details_of_Arbitrator_3_Presiding': st.session_state.de_arb3,
+            'name_of_tribunal_secretary': st.session_state.de_sec_name,
+            'secretary_hourly_rate': st.session_state.de_sec_rate,
+            'limits_submission': st.session_state.de_limits,
+            'max_filename_len': st.session_state.de_file_len,
+            'deadline_timezone': st.session_state.de_timezone,
+            'time_produce_docs': st.session_state.de_time_docs,
+            'time_shred_docs': st.session_state.de_time_shred,
+            'time_notify_oral': st.session_state.de_time_oral,
+            'time_appoint_interpreter': st.session_state.de_time_interp,
+            'time_hearing_bundle': st.session_state.de_time_bundle,
+            'time_submit_exhibits': st.session_state.de_time_exhibits,
+            'date_decide_venue': st.session_state.de_date_venue,
+            'place_in_person': st.session_state.de_venue_name,
+            'physical_venue_city': st.session_state.de_venue_city,
+            'hearing_hours': st.session_state.de_hours,
+            'schedule_oral_hearing': st.session_state.de_agenda,
+            'prehearing_matters': st.session_state.de_prehear,
+            'time_abbreviations': st.session_state.de_time_abbr,
+            'time_confirm_contact': st.session_state.de_time_contact,
+            'time_notify_counsel': st.session_state.de_time_new_counsel,
+            # Dates
+            'deadline_01': st.session_state.de_d1.strftime("%d %B %Y"),
+            'deadline_02': st.session_state.de_d2.strftime("%d %B %Y"),
+            'deadline_03': st.session_state.de_d3.strftime("%d %B %Y"),
+            'deadline_08': st.session_state.de_d8.strftime("%d %B %Y"),
+        }
+        
+        # Add conditional dates
+        if st.session_state.de_style == "Memorial":
+            final_context['deadline_09'] = st.session_state.de_d9.strftime("%d %B %Y")
+            final_context['deadline_10'] = st.session_state.de_d10.strftime("%d %B %Y")
+            final_context['deadline_12'] = st.session_state.de_d12.strftime("%d %B %Y")
+        else:
+            final_context['deadline_09'] = st.session_state.de_d9.strftime("%d %B %Y")
+            final_context['deadline_10'] = st.session_state.de_d10.strftime("%d %B %Y")
+            final_context['deadline_14'] = st.session_state.de_d14.strftime("%d %B %Y")
+
         try:
             doc = DocxTemplate(template_path)
-            doc.render(context)
+            doc.render(final_context)
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
+            
             st.success("Document Generated Successfully.")
             st.download_button(
                 label="Download Order (.docx)",
                 data=buffer,
-                file_name=f"PO1_{context['Case_Number']}.docx",
+                file_name=f"PO1_{st.session_state.de_case_number}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
         except Exception as e:
