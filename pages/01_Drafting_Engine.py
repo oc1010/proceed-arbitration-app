@@ -2,7 +2,7 @@ import streamlit as st
 from docxtpl import DocxTemplate
 from io import BytesIO
 from datetime import date, timedelta
-from db import load_responses, save_complex_data, load_complex_data, load_structure
+from db import load_responses, save_complex_data, load_complex_data, send_email_notification
 import pandas as pd
 import os
 
@@ -10,6 +10,7 @@ st.set_page_config(page_title="Drafting Engine", layout="wide")
 
 if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied.")
+    if st.button("Log in"): st.switch_page("main.py")
     st.stop()
 
 # --- SIDEBAR ---
@@ -30,8 +31,7 @@ with st.sidebar:
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- 1. INITIALIZE SESSION STATE (Fresh Keys to Fix Conflicts) ---
-# We use 'tt' (timetable) prefix to guarantee uniqueness.
+# --- 1. INITIALIZE SESSION STATE (Anti-Jump & Anti-Duplicate Fix) ---
 DEFAULTS = {
     'de_case_number': 'ARB/24/001',
     'de_seat': 'London',
@@ -56,7 +56,7 @@ DEFAULTS = {
     'de_style': 'Memorial', 
     'de_bifurc_status': 'not bifurcated',
     'de_inst': 'LCIA',
-    # Timetable Dates (Renamed to 'tt' to ensure no duplicate key errors)
+    # Timetable Dates (Prefix 'tt_' to avoid conflicts)
     'de_tt_d1': date.today(), 
     'de_tt_d2': date.today() + timedelta(weeks=4),
     'de_tt_d3': date.today() + timedelta(weeks=6), 
@@ -148,36 +148,47 @@ def display_hint(key):
     else: 
         st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
+def get_party_emails():
+    p2 = load_responses("phase2")
+    c = p2.get('claimant', {}).get('contact_email')
+    r = p2.get('respondent', {}).get('contact_email')
+    return [e for e in [c, r] if e]
+
 def sync_timeline_to_phase4(style):
-    # Using the new safe keys
+    # Access dates from session state using 'tt' keys
     d1 = st.session_state.de_tt_d1
     d2 = st.session_state.de_tt_d2
     d3 = st.session_state.de_tt_d3
     d8 = st.session_state.de_tt_d8
     
+    # Structure: id, event, original_date, current_date, status, owner, logistics, history
     new_events = [
-        {"date": str(d1), "event": "Statement of Case", "owner": "Claimant", "status": "Pending", "logistics": "Submit via Portal"},
-        {"date": str(d2), "event": "Statement of Defence", "owner": "Respondent", "status": "Pending", "logistics": "Submit via Portal"},
-        {"date": str(d3), "event": "Doc Production Requests", "owner": "Both", "status": "Pending", "logistics": "Use Phase 3 Tab"},
-        {"date": str(d8), "event": "Document Production", "owner": "Both", "status": "Pending", "logistics": "Via Portal"},
+        {"id": "ev_1", "event": "Statement of Case", "original_date": str(d1), "current_date": str(d1), "owner": "Claimant", "status": "Upcoming", "logistics": "Submit via Portal", "history": []},
+        {"id": "ev_2", "event": "Statement of Defence", "original_date": str(d2), "current_date": str(d2), "owner": "Respondent", "status": "Upcoming", "logistics": "Submit via Portal", "history": []},
+        {"id": "ev_3", "event": "Doc Production Requests", "original_date": str(d3), "current_date": str(d3), "owner": "Both", "status": "Upcoming", "logistics": "Use 'Doc Production' Tab", "history": []},
+        {"id": "ev_4", "event": "Document Production", "original_date": str(d8), "current_date": str(d8), "owner": "Both", "status": "Upcoming", "logistics": "Exchange via Secure Link (No Upload)", "history": []},
     ]
     
     if style == "Memorial":
         d9, d10, d12 = st.session_state.de_tt_d9_mem, st.session_state.de_tt_d10_mem, st.session_state.de_tt_d12_mem
         new_events.extend([
-            {"date": str(d9), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
-            {"date": str(d10), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
-            {"date": str(d12), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+            {"id": "ev_5", "event": "Statement of Reply", "original_date": str(d9), "current_date": str(d9), "owner": "Claimant", "status": "Upcoming", "logistics": "Submit via Portal", "history": []},
+            {"id": "ev_6", "event": "Statement of Rejoinder", "original_date": str(d10), "current_date": str(d10), "owner": "Respondent", "status": "Upcoming", "logistics": "Submit via Portal", "history": []},
+            {"id": "ev_7", "event": "Oral Hearing", "original_date": str(d12), "current_date": str(d12), "owner": "Tribunal", "status": "Upcoming", "logistics": "See Logistics Tab", "history": []}
         ])
     else:
         d9, d10, d14 = st.session_state.de_tt_d9_pl, st.session_state.de_tt_d10_pl, st.session_state.de_tt_d14_pl
         new_events.extend([
-            {"date": str(d9), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
-            {"date": str(d10), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
-            {"date": str(d14), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
+            {"id": "ev_5", "event": "Witness Statements", "original_date": str(d9), "current_date": str(d9), "owner": "Both", "status": "Upcoming", "logistics": "Exchange via Email", "history": []},
+            {"id": "ev_6", "event": "Expert Reports", "original_date": str(d10), "current_date": str(d10), "owner": "Both", "status": "Upcoming", "logistics": "Exchange via Email", "history": []},
+            {"id": "ev_7", "event": "Oral Hearing", "original_date": str(d14), "current_date": str(d14), "owner": "Tribunal", "status": "Upcoming", "logistics": "See Logistics Tab", "history": []}
         ])
     
     save_complex_data("timeline", new_events)
+    
+    # Notify
+    emails = get_party_emails()
+    send_email_notification(emails, "Procedural Order No. 1 Issued", "The Tribunal has established the Procedural Timetable. Log in to viewing the schedule.")
     return len(new_events)
 
 def render_phase1_table():
@@ -254,6 +265,7 @@ tabs = st.tabs(["Phase 1 Review", "Phase 2 Analysis", "General", "Parties", "Tri
 # --- TAB 1: PHASE 1 REVIEW ---
 with tabs[0]:
     st.subheader("Review: Pre-Tribunal Questionnaire")
+    st.caption("Responses collected by the LCIA prior to your appointment.")
     render_phase1_table()
 
 # --- TAB 2: PHASE 2 ANALYSIS ---
@@ -506,81 +518,38 @@ st.divider()
 # --- GENERATION & SYNC ---
 if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
     template_path = "template_po1.docx"
-    
     if not os.path.exists(template_path):
         st.error(f"System Error: Template file '{template_path}' not found. Please upload it to GitHub.")
     else:
-        # 1. Sync dates
         count = sync_timeline_to_phase4(st.session_state.de_style)
-        st.toast(f"System Update: Synced {count} events to Smart Timeline.")
+        st.success(f"PO1 Generated. {count} events synced.")
         
-        # 2. Build final context
+        # Build Context for Doc Generation (Mapping 'tt' keys back to doc vars)
         style = st.session_state.de_style
         d9 = st.session_state.de_tt_d9_mem if style == "Memorial" else st.session_state.de_tt_d9_pl
         d10 = st.session_state.de_tt_d10_mem if style == "Memorial" else st.session_state.de_tt_d10_pl
         d_final = st.session_state.de_tt_d12_mem if style == "Memorial" else st.session_state.de_tt_d14_pl
 
-        final_context = {
+        ctx = {
             'Case_Number': st.session_state.de_case_number,
             'seat_of_arbitration': st.session_state.de_seat,
-            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"), 
-            'governing_law_of_contract': st.session_state.de_law,
-            'claimant_rep_1': st.session_state.de_claimant_rep1,
-            'claimant_rep_2': st.session_state.de_claimant_rep2,
-            'Contact_details_of_Claimant': st.session_state.de_claimant_addr,
-            'Contact_details_of_Claimant_Representative': st.session_state.de_claimant_contact,
-            'respondent_rep_1': st.session_state.de_resp_rep1,
-            'respondent_rep_2': st.session_state.de_resp_rep2,
-            'Contact_details_of_Respondent': st.session_state.de_resp_addr,
-            'Contact_details_of_Respondent_Representative': st.session_state.de_resp_contact,
-            'Contact_details_of_Arbitrator_1': st.session_state.de_arb1,
-            'Contact_details_of_Arbitrator_2': st.session_state.de_arb2,
-            'Contact_details_of_Arbitrator_3_Presiding': st.session_state.de_arb3,
-            'name_of_tribunal_secretary': st.session_state.de_sec_name,
-            'secretary_hourly_rate': st.session_state.de_sec_rate,
-            'limits_submission': st.session_state.de_limits,
-            'max_filename_len': st.session_state.de_file_len,
-            'deadline_timezone': st.session_state.de_timezone,
-            'time_produce_docs': st.session_state.de_time_docs,
-            'time_shred_docs': st.session_state.de_time_shred,
-            'time_notify_oral': st.session_state.de_time_oral,
-            'time_appoint_interpreter': st.session_state.de_time_interp,
-            'time_hearing_bundle': st.session_state.de_time_bundle,
-            'time_submit_exhibits': st.session_state.de_time_exhibits,
-            'date_decide_venue': st.session_state.de_date_venue,
-            'place_in_person': st.session_state.de_venue_name,
-            'physical_venue_city': st.session_state.de_venue_city,
-            'hearing_hours': st.session_state.de_hours,
-            'schedule_oral_hearing': st.session_state.de_agenda,
-            'prehearing_matters': st.session_state.de_prehear,
-            'time_abbreviations': st.session_state.de_time_abbr,
-            'time_confirm_contact': st.session_state.de_time_contact,
-            'time_notify_counsel': st.session_state.de_time_new_counsel,
-            # Dates
+            'meeting_date': st.session_state.de_meeting_date.strftime("%d %B %Y"),
             'deadline_01': st.session_state.de_tt_d1.strftime("%d %B %Y"),
             'deadline_02': st.session_state.de_tt_d2.strftime("%d %B %Y"),
             'deadline_03': st.session_state.de_tt_d3.strftime("%d %B %Y"),
             'deadline_08': st.session_state.de_tt_d8.strftime("%d %B %Y"),
-            # Conditional
             'deadline_09': d9.strftime("%d %B %Y"),
             'deadline_10': d10.strftime("%d %B %Y"),
             'deadline_12': d_final.strftime("%d %B %Y") if style == "Memorial" else "N/A",
             'deadline_14': d_final.strftime("%d %B %Y") if style == "Pleading" else "N/A"
         }
-
+        
         try:
             doc = DocxTemplate(template_path)
-            doc.render(final_context)
+            doc.render(ctx)
             buffer = BytesIO()
             doc.save(buffer)
             buffer.seek(0)
-            
-            st.success("Document Generated Successfully.")
-            st.download_button(
-                label="Download Order (.docx)",
-                data=buffer,
-                file_name=f"PO1_{st.session_state.de_case_number}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+            st.download_button("Download Order (.docx)", data=buffer, file_name="PO1.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
         except Exception as e:
             st.error(f"Generation Failed: {e}")
