@@ -5,7 +5,36 @@ from db import load_complex_data, save_complex_data, load_responses
 
 st.set_page_config(page_title="Cost Management", layout="wide")
 role = st.session_state.get('user_role')
-if not role: st.error("Access Denied"); st.stop()
+if not role:
+    st.error("Access Denied.")
+    if st.button("Log in"): st.switch_page("main.py")
+    st.stop()
+
+# --- SIDEBAR (PERSISTENT) ---
+with st.sidebar:
+    st.write(f"User: **{role.upper()}**")
+    st.divider()
+    st.page_link("main.py", label="Home")
+    
+    if role == 'lcia':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
+    elif role == 'arbitrator':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
+        st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+    else:
+        st.page_link("pages/00_Fill_Questionnaire.py", label="Fill Questionnaires")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+
+    st.divider()
+    def logout():
+        st.session_state['user_role'] = None
+        st.switch_page("main.py")
+    st.button("Logout", on_click=logout)
 
 st.title("💰 Phase 5: Cost Management")
 
@@ -63,12 +92,12 @@ with tab_sub:
     with c1:
         st.write("#### Claimant's Costs")
         if c_log: 
-            st.dataframe(pd.DataFrame(c_log))
+            st.dataframe(pd.DataFrame(c_log), use_container_width=True)
             if any(x.get('is_final') for x in c_log): st.warning("⚠️ Final Submission Received")
     with c2:
         st.write("#### Respondent's Costs")
         if r_log: 
-            st.dataframe(pd.DataFrame(r_log))
+            st.dataframe(pd.DataFrame(r_log), use_container_width=True)
             if any(x.get('is_final') for x in r_log): st.warning("⚠️ Final Submission Received")
 
 # --- 2. TRIBUNAL LEDGER (Advance Balances) ---
@@ -96,6 +125,7 @@ with tab_led:
                     st.rerun()
         
         with c2:
+            st.write("### Actions")
             if st.button("⚠️ Retrigger Advance (Request Top-Up)"):
                 notify_parties("Advance Payment Request", "The Tribunal requests a further advance on costs due to low balance.")
                 st.success("Request sent to parties.")
