@@ -5,8 +5,37 @@ from db import load_complex_data, save_complex_data
 import json
 
 st.set_page_config(page_title="Document Production", layout="wide")
+
 role = st.session_state.get('user_role')
-if not role: st.error("Access Denied"); st.stop()
+if not role:
+    st.error("Access Denied.")
+    if st.button("Log in"): st.switch_page("main.py")
+    st.stop()
+
+# --- SIDEBAR (PERSISTENT) ---
+with st.sidebar:
+    st.write(f"User: **{role.upper()}**")
+    st.divider()
+    st.page_link("main.py", label="🏠 Home Dashboard")
+    
+    if role == 'lcia':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
+    elif role == 'arbitrator':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
+        st.page_link("pages/01_Drafting_Engine.py", label="📝 PO1 Drafting")
+        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+    else:
+        st.page_link("pages/00_Fill_Questionnaire.py", label="📝 Fill Questionnaires")
+        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+
+    st.divider()
+    if st.button("Logout", use_container_width=True):
+        st.session_state['user_role'] = None
+        st.switch_page("main.py")
 
 st.title("📂 Phase 3: Document Production Management")
 
@@ -21,13 +50,11 @@ if role in ['claimant', 'respondent']:
     
     current_list = doc_prod.get(role, [])
     
-    # Convert list of dicts to DataFrame for editing
     if current_list:
         df = pd.DataFrame(current_list)
     else:
         df = pd.DataFrame(columns=["Request No.", "Description", "Date Requested", "Objection? (Y/N)", "Objection Reason", "Date of Objection"])
 
-    # Editable Data Table
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
@@ -41,7 +68,6 @@ if role in ['claimant', 'respondent']:
     )
 
     if st.button("💾 Save Schedule"):
-        # Convert back to list of dicts (handle dates serialization)
         cleaned_list = json.loads(edited_df.to_json(orient="records", date_format="iso"))
         doc_prod[role] = cleaned_list
         save_complex_data("doc_prod", doc_prod)
@@ -58,9 +84,8 @@ elif role == 'arbitrator':
         if c_list:
             df_c = pd.DataFrame(c_list)
             st.dataframe(df_c, use_container_width=True)
-            # Stats
             total = len(df_c)
-            # Filter safely
+            # Safe access to column
             if "Objection? (Y/N)" in df_c.columns:
                 objs = len(df_c[df_c["Objection? (Y/N)"] == True])
                 st.metric("Conflict Rate", f"{objs}/{total}", delta=f"{objs/total:.0%} Objected" if total else "0%")
