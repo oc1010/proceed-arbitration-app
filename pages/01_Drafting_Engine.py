@@ -30,13 +30,13 @@ with st.sidebar:
 
 st.title("Procedural Order No. 1 | Drafting Engine")
 
-# --- 1. INITIALIZE SESSION STATE ---
-# CRITICAL FIX: Unique keys for every field to prevent 'DuplicateKey' crashes.
+# --- 1. INITIALIZE SESSION STATE (Fresh Keys to Fix Conflicts) ---
+# We use 'tt' (timetable) prefix to guarantee uniqueness.
 DEFAULTS = {
     'de_case_number': 'ARB/24/001',
     'de_seat': 'London',
     'de_law': 'English Law',
-    'de_meeting_date': date.today(), # Renamed from de_d1 to avoid conflict
+    'de_meeting_date': date.today(),
     'de_claimant_rep1': '', 'de_claimant_rep2': '',
     'de_claimant_addr': '', 'de_claimant_contact': '',
     'de_resp_rep1': '', 'de_resp_rep2': '',
@@ -56,19 +56,17 @@ DEFAULTS = {
     'de_style': 'Memorial', 
     'de_bifurc_status': 'not bifurcated',
     'de_inst': 'LCIA',
-    # Standard Dates
-    'de_d1': date.today(), 
-    'de_d2': date.today() + timedelta(weeks=4),
-    'de_d3': date.today() + timedelta(weeks=6), 
-    'de_d8': date.today() + timedelta(weeks=10),
-    # Conditional Dates (Memorial Style)
-    'de_d9_mem': date.today() + timedelta(weeks=14), 
-    'de_d10_mem': date.today() + timedelta(weeks=18),
-    'de_d12_mem': date.today() + timedelta(weeks=22),
-    # Conditional Dates (Pleading Style)
-    'de_d9_pl': date.today() + timedelta(weeks=14), 
-    'de_d10_pl': date.today() + timedelta(weeks=18),
-    'de_d14_pl': date.today() + timedelta(weeks=24)
+    # Timetable Dates (Renamed to 'tt' to ensure no duplicate key errors)
+    'de_tt_d1': date.today(), 
+    'de_tt_d2': date.today() + timedelta(weeks=4),
+    'de_tt_d3': date.today() + timedelta(weeks=6), 
+    'de_tt_d8': date.today() + timedelta(weeks=10),
+    'de_tt_d9_mem': date.today() + timedelta(weeks=14), 
+    'de_tt_d10_mem': date.today() + timedelta(weeks=18),
+    'de_tt_d12_mem': date.today() + timedelta(weeks=22),
+    'de_tt_d9_pl': date.today() + timedelta(weeks=14), 
+    'de_tt_d10_pl': date.today() + timedelta(weeks=18),
+    'de_tt_d14_pl': date.today() + timedelta(weeks=24)
 }
 
 for key, default_val in DEFAULTS.items():
@@ -132,8 +130,7 @@ def clean_text(text):
         parts = text.split("**")
         if len(parts) > 1:
             extracted = parts[1].strip()
-            if extracted.endswith(":"):
-                extracted = extracted[:-1]
+            if extracted.endswith(":"): extracted = extracted[:-1]
             return extracted
     return text
 
@@ -152,10 +149,11 @@ def display_hint(key):
         st.warning(f"**{topic_title}**\n\n⚠️ **Conflict Detected**\n\n* **Claimant wants:** {c_clean}\n* **Respondent wants:** {r_clean}", icon="⚠️")
 
 def sync_timeline_to_phase4(style):
-    d1 = st.session_state.de_d1
-    d2 = st.session_state.de_d2
-    d3 = st.session_state.de_d3
-    d8 = st.session_state.de_d8
+    # Using the new safe keys
+    d1 = st.session_state.de_tt_d1
+    d2 = st.session_state.de_tt_d2
+    d3 = st.session_state.de_tt_d3
+    d8 = st.session_state.de_tt_d8
     
     new_events = [
         {"date": str(d1), "event": "Statement of Case", "owner": "Claimant", "status": "Pending", "logistics": "Submit via Portal"},
@@ -165,20 +163,14 @@ def sync_timeline_to_phase4(style):
     ]
     
     if style == "Memorial":
-        # Use specific memory keys
-        d9 = st.session_state.de_d9_mem
-        d10 = st.session_state.de_d10_mem
-        d12 = st.session_state.de_d12_mem
+        d9, d10, d12 = st.session_state.de_tt_d9_mem, st.session_state.de_tt_d10_mem, st.session_state.de_tt_d12_mem
         new_events.extend([
             {"date": str(d9), "event": "Statement of Reply", "owner": "Claimant", "status": "Pending", "logistics": "-"},
             {"date": str(d10), "event": "Statement of Rejoinder", "owner": "Respondent", "status": "Pending", "logistics": "-"},
             {"date": str(d12), "event": "Oral Hearing", "owner": "Tribunal", "status": "Pending", "logistics": "See Logistics Tab"}
         ])
     else:
-        # Use specific pleading keys
-        d9 = st.session_state.de_d9_pl
-        d10 = st.session_state.de_d10_pl
-        d14 = st.session_state.de_d14_pl
+        d9, d10, d14 = st.session_state.de_tt_d9_pl, st.session_state.de_tt_d10_pl, st.session_state.de_tt_d14_pl
         new_events.extend([
             {"date": str(d9), "event": "Witness Statements", "owner": "Both", "status": "Pending", "logistics": "-"},
             {"date": str(d10), "event": "Expert Reports", "owner": "Both", "status": "Pending", "logistics": "-"},
@@ -262,7 +254,6 @@ tabs = st.tabs(["Phase 1 Review", "Phase 2 Analysis", "General", "Parties", "Tri
 # --- TAB 1: PHASE 1 REVIEW ---
 with tabs[0]:
     st.subheader("Review: Pre-Tribunal Questionnaire")
-    st.caption("Responses collected by the LCIA prior to your appointment.")
     render_phase1_table()
 
 # --- TAB 2: PHASE 2 ANALYSIS ---
@@ -320,8 +311,6 @@ with tabs[1]:
                 "Respondent": st.column_config.TextColumn("Respondent", width="large")
             }
         )
-        
-        st.markdown("### 💬 Party Comments")
         with st.expander("View Detailed Comments"):
             for row in summary_data:
                 if row["_c_com"] or row["_r_com"]:
@@ -333,21 +322,22 @@ with tabs[1]:
 # --- TAB 3: GENERAL ---
 with tabs[2]:
     st.subheader("General Details")
-    c1, c2 = st.columns(2)
-    st.text_input("Case Reference Number", key="de_case_number")
-    st.text_input("Seat of Arbitration", key="de_seat")
-    
-    # FIXED: Unique key 'de_meeting_date' instead of 'de_d1'
-    st.date_input("First Procedural Meeting Date", key="de_meeting_date") 
-    
-    st.text_input("Governing Law", key="de_law")
-    st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst")
-    
-    st.divider()
-    st.markdown("#### Procedural Structure")
-    display_hint("bifurcation")
-    display_hint("consolidation")
-    st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"], key="de_bifurc_status")
+    # FORM WRAPPER TO PREVENT JUMPING
+    with st.form("gen_form"):
+        c1, c2 = st.columns(2)
+        st.text_input("Case Reference Number", key="de_case_number")
+        st.text_input("Seat of Arbitration", key="de_seat")
+        st.date_input("First Procedural Meeting Date", key="de_meeting_date")
+        st.text_input("Governing Law", key="de_law")
+        st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst")
+        st.divider()
+        st.markdown("#### Procedural Structure")
+        display_hint("bifurcation")
+        display_hint("consolidation")
+        st.selectbox("Bifurcation Status", ["not bifurcated", "bifurcated"], key="de_bifurc_status")
+        
+        if st.form_submit_button("💾 Save General Details"):
+            st.success("Saved.")
 
 # --- TAB 4: PARTIES ---
 with tabs[3]:
@@ -356,60 +346,69 @@ with tabs[3]:
     display_hint("funding")
     st.divider()
     
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### Claimant")
-        st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
-        st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
-        st.text_area("Client Address (Claimant)", key="de_claimant_addr")
-        st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
+    with st.form("parties_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("### Claimant")
+            st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
+            st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
+            st.text_area("Client Address (Claimant)", key="de_claimant_addr")
+            st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
+        with c2:
+            st.markdown("### Respondent")
+            st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
+            st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
+            st.text_area("Client Address (Respondent)", key="de_resp_addr")
+            st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
         
-    with c2:
-        st.markdown("### Respondent")
-        st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
-        st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
-        st.text_area("Client Address (Respondent)", key="de_resp_addr")
-        st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
+        if st.form_submit_button("💾 Save Parties"):
+            st.success("Saved.")
 
 # --- TAB 5: TRIBUNAL ---
 with tabs[4]:
     st.subheader("Tribunal Members")
-    st.text_input("Co-Arbitrator 1", key="de_arb1")
-    st.text_input("Co-Arbitrator 2", key="de_arb2")
-    st.text_input("Presiding Arbitrator", key="de_arb3")
-    
-    st.divider()
-    st.markdown("#### Tribunal Secretary")
-    display_hint("secretary")
-    display_hint("sec_fees")
-    c1, c2 = st.columns(2)
-    st.text_input("Secretary Name", key="de_sec_name")
-    st.text_input("Secretary Hourly Rate", key="de_sec_rate")
+    with st.form("trib_form"):
+        st.text_input("Co-Arbitrator 1", key="de_arb1")
+        st.text_input("Co-Arbitrator 2", key="de_arb2")
+        st.text_input("Presiding Arbitrator", key="de_arb3")
+        st.divider()
+        st.markdown("#### Tribunal Secretary")
+        display_hint("secretary")
+        display_hint("sec_fees")
+        c1, c2 = st.columns(2)
+        st.text_input("Secretary Name", key="de_sec_name")
+        st.text_input("Secretary Hourly Rate", key="de_sec_rate")
+        
+        if st.form_submit_button("💾 Save Tribunal"):
+            st.success("Saved.")
 
 # --- TAB 6: TIMETABLE ---
 with tabs[5]:
     st.subheader("Procedural Timetable")
     st.markdown("#### Style Preference")
     display_hint("style")
+    # Radio needs to be outside form if it triggers conditional logic rendering
     proc_style = st.radio("Select Style", ["Memorial", "Pleading"], horizontal=True, key="de_style")
     
-    c1, c2 = st.columns(2)
-    with c1:
-        st.date_input("1. Statement of Case", key="de_d1")
-        st.date_input("2. Statement of Defence", key="de_d2")
-        st.date_input("3. Doc Production Requests", key="de_d3")
-        st.date_input("8. Document Production", key="de_d8")
-    with c2:
-        if proc_style == "Memorial":
-            # FIXED: Unique keys for Memorial
-            st.date_input("9. Statement of Reply", key="de_d9_mem")
-            st.date_input("10. Statement of Rejoinder", key="de_d10_mem")
-            st.date_input("12. Oral Hearing", key="de_d12_mem")
-        else:
-            # FIXED: Unique keys for Pleading
-            st.date_input("9. Witness Statements", key="de_d9_pl")
-            st.date_input("10. Expert Reports", key="de_d10_pl")
-            st.date_input("14. Oral Hearing", key="de_d14_pl")
+    with st.form("time_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.date_input("1. Statement of Case", key="de_tt_d1")
+            st.date_input("2. Statement of Defence", key="de_tt_d2")
+            st.date_input("3. Doc Production Requests", key="de_tt_d3")
+            st.date_input("8. Document Production", key="de_tt_d8")
+        with c2:
+            if proc_style == "Memorial":
+                st.date_input("9. Statement of Reply", key="de_tt_d9_mem")
+                st.date_input("10. Statement of Rejoinder", key="de_tt_d10_mem")
+                st.date_input("12. Oral Hearing", key="de_tt_d12_mem")
+            else:
+                st.date_input("9. Witness Statements", key="de_tt_d9_pl")
+                st.date_input("10. Expert Reports", key="de_tt_d10_pl")
+                st.date_input("14. Oral Hearing", key="de_tt_d14_pl")
+        
+        if st.form_submit_button("💾 Save Timetable"):
+            st.success("Saved.")
 
 # --- TAB 7: EVIDENCE ---
 with tabs[6]:
@@ -419,15 +418,18 @@ with tabs[6]:
     display_hint("limits")
     display_hint("privilege_std")
     display_hint("privilege_logs")
-    st.text_input("Time to Produce Docs", key="de_time_docs")
     
-    st.divider()
-    st.markdown("#### Witnesses & Experts")
-    display_hint("witness_exam")
-    display_hint("expert_meeting")
-    display_hint("expert_hot_tub")
-    display_hint("expert_reply")
-    st.text_input("Notice for Oral Evidence", key="de_time_oral")
+    with st.form("ev_form"):
+        st.text_input("Time to Produce Docs", key="de_time_docs")
+        st.divider()
+        st.markdown("#### Witnesses & Experts")
+        display_hint("witness_exam")
+        display_hint("expert_meeting")
+        display_hint("expert_hot_tub")
+        display_hint("expert_reply")
+        st.text_input("Notice for Oral Evidence", key="de_time_oral")
+        if st.form_submit_button("💾 Save Evidence"):
+            st.success("Saved.")
 
 # --- TAB 8: HEARING ---
 with tabs[7]:
@@ -437,13 +439,19 @@ with tabs[7]:
     display_hint("chess_clock")
     display_hint("transcription")
     display_hint("demonstratives")
-    c1, c2 = st.columns(2)
-    st.text_input("Physical Venue Name", key="de_venue_name")
-    st.text_input("City", key="de_venue_city")
-    st.text_input("Hearing Hours", key="de_hours")
-    st.text_input("Time to Appoint Interpreter", key="de_time_interp")
-    st.text_area("Hearing Agenda", key="de_agenda")
-    st.text_area("Pre-Hearing Matters", key="de_prehear")
+    
+    with st.form("hear_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.text_input("Physical Venue Name", key="de_venue_name")
+            st.text_input("City", key="de_venue_city")
+            st.text_input("Hearing Hours", key="de_hours")
+        with c2:
+            st.text_input("Time to Appoint Interpreter", key="de_time_interp")
+        st.text_area("Hearing Agenda", key="de_agenda")
+        st.text_area("Pre-Hearing Matters", key="de_prehear")
+        if st.form_submit_button("💾 Save Hearing"):
+            st.success("Saved.")
 
 # --- TAB 9: LOGISTICS ---
 with tabs[8]:
@@ -455,22 +463,24 @@ with tabs[8]:
     display_hint("time_shred_docs")
     display_hint("platform")
     display_hint("bundling")
-    c1, c2 = st.columns(2)
-    st.text_area("Page Limits Clause", key="de_limits")
-    st.text_input("Max Filename Length", key="de_file_len")
-    st.text_input("Deadline Timezone", key="de_timezone")
-    st.text_input("Time to Shred Docs", key="de_time_shred")
     
-    st.divider()
-    st.markdown("#### Communications")
-    display_hint("extensions")
-    c1, c2 = st.columns(2)
-    st.text_input("Time for Abbreviations", key="de_time_abbr")
-    st.text_input("Time to Confirm Contact", key="de_time_contact")
-    st.text_input("Time to Notify New Counsel", key="de_time_new_counsel")
-    st.text_input("Bundle Deadline", key="de_time_bundle")
-    st.text_input("Hearing Exhibits Deadline", key="de_time_exhibits")
-    st.text_input("Venue Decision Deadline", key="de_date_venue")
+    with st.form("log_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.text_area("Page Limits Clause", key="de_limits")
+            st.text_input("Max Filename Length", key="de_file_len")
+            st.text_input("Deadline Timezone", key="de_timezone")
+            st.text_input("Time to Shred Docs", key="de_time_shred")
+        with c2:
+            st.text_input("Time for Abbreviations", key="de_time_abbr")
+            st.text_input("Time to Confirm Contact", key="de_time_contact")
+            st.text_input("Time to Notify New Counsel", key="de_time_new_counsel")
+            st.text_input("Bundle Deadline", key="de_time_bundle")
+            st.text_input("Hearing Exhibits Deadline", key="de_time_exhibits")
+            st.text_input("Venue Decision Deadline", key="de_date_venue")
+        
+        if st.form_submit_button("💾 Save Logistics"):
+            st.success("Saved.")
 
 # --- TAB 10: AWARD ---
 with tabs[9]:
@@ -505,11 +515,10 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
         st.toast(f"System Update: Synced {count} events to Smart Timeline.")
         
         # 2. Build final context
-        # Construct variable dictionary with correct keys
         style = st.session_state.de_style
-        d9 = st.session_state.de_d9_mem if style == "Memorial" else st.session_state.de_d9_pl
-        d10 = st.session_state.de_d10_mem if style == "Memorial" else st.session_state.de_d10_pl
-        d_final = st.session_state.de_d12_mem if style == "Memorial" else st.session_state.de_d14_pl
+        d9 = st.session_state.de_tt_d9_mem if style == "Memorial" else st.session_state.de_tt_d9_pl
+        d10 = st.session_state.de_tt_d10_mem if style == "Memorial" else st.session_state.de_tt_d10_pl
+        d_final = st.session_state.de_tt_d12_mem if style == "Memorial" else st.session_state.de_tt_d14_pl
 
         final_context = {
             'Case_Number': st.session_state.de_case_number,
@@ -547,12 +556,12 @@ if st.button("Generate PO1 & Sync to Phase 4", type="primary"):
             'time_abbreviations': st.session_state.de_time_abbr,
             'time_confirm_contact': st.session_state.de_time_contact,
             'time_notify_counsel': st.session_state.de_time_new_counsel,
-            # Standard Dates
-            'deadline_01': st.session_state.de_d1.strftime("%d %B %Y"),
-            'deadline_02': st.session_state.de_d2.strftime("%d %B %Y"),
-            'deadline_03': st.session_state.de_d3.strftime("%d %B %Y"),
-            'deadline_08': st.session_state.de_d8.strftime("%d %B %Y"),
-            # Conditional Dates
+            # Dates
+            'deadline_01': st.session_state.de_tt_d1.strftime("%d %B %Y"),
+            'deadline_02': st.session_state.de_tt_d2.strftime("%d %B %Y"),
+            'deadline_03': st.session_state.de_tt_d3.strftime("%d %B %Y"),
+            'deadline_08': st.session_state.de_tt_d8.strftime("%d %B %Y"),
+            # Conditional
             'deadline_09': d9.strftime("%d %B %Y"),
             'deadline_10': d10.strftime("%d %B %Y"),
             'deadline_12': d_final.strftime("%d %B %Y") if style == "Memorial" else "N/A",
