@@ -2,153 +2,182 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import date, datetime, timedelta
-from db import load_complex_data, save_complex_data, load_responses
+from db import load_complex_data, save_complex_data, load_responses, send_email_notification
 import json
 
 st.set_page_config(page_title="Smart Timeline", layout="wide")
-role = st.session_state.get('user_role')
-if not role: st.error("Access Denied"); st.stop()
 
-st.title("📅 Phase 4: Timeline & Logistics")
+role = st.session_state.get('user_role')
+if not role:
+    st.error("Access Denied.")
+    if st.button("Log in"): st.switch_page("main.py")
+    st.stop()
+
+# --- SIDEBAR (Persistent) ---
+with st.sidebar:
+    st.write(f"User: **{role.upper()}**")
+    st.divider()
+    st.page_link("main.py", label="Home")
+    if role == 'lcia':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
+    elif role == 'arbitrator':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
+        st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
+    st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+    st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+    st.page_link("pages/04_Cost_Management.py", label="Cost Management")
+
+st.title("📅 Phase 4: Procedural Timetable")
 
 # --- LOAD DATA ---
 data = load_complex_data()
 timeline = data.get("timeline", [])
-delays = data.get("delays", []) # List of {event, requestor, reason, status, tribunal_reason}
+delays = data.get("delays", [])
 
-# --- EMAIL NOTIFICATION SIMULATION ---
-def notify_parties(subject, body):
-    # Fetch emails from Phase 2 responses
+# --- EMAIL HELPERS ---
+def get_party_emails():
     p2 = load_responses("phase2")
-    c_email = p2.get('claimant', {}).get('contact_email', 'claimant@example.com')
-    r_email = p2.get('respondent', {}).get('contact_email', 'respondent@example.com')
-    
-    st.toast(f"📧 Sending Email to: {c_email}, {r_email}", icon="📨")
-    st.info(f"**Email Sent:**\n\n**Subject:** {subject}\n\n{body}")
+    c = p2.get('claimant', {}).get('contact_email')
+    r = p2.get('respondent', {}).get('contact_email')
+    return [e for e in [c, r] if e]
 
-# --- TAB STRUCTURE ---
-tab_vis, tab_log, tab_delay = st.tabs(["📊 Visual Timetable", "📍 Logistics & Reminders", "⏳ Delay Requests"])
+# --- TAB 1: VISUAL SCHEDULE ---
+tab1, tab2, tab3 = st.tabs(["📊 Visual Schedule", "⏳ Extension of Time Requests", "📝 Change Log"])
 
-# --- 1. HORIZONTAL TIMELINE ---
-with tab_vis:
+with tab1:
     if not timeline:
-        st.warning("No timeline data found. Generate PO1 to sync dates.")
+        st.warning("No procedural timetable found. Arbitrator must generate PO1 first.")
     else:
-        # Prepare Data
+        # Data Prep for Chart
         df = pd.DataFrame(timeline)
-        df['start'] = pd.to_datetime(df['date'])
-        df['end'] = df['start'] + timedelta(days=1) # Width for chart
+        df['Start'] = pd.to_datetime(df['current_date'])
+        df['End'] = df['Start'] + timedelta(days=2) # Small width for visibility
         
-        # Determine Status
         today = pd.to_datetime(date.today())
         def get_status(row):
-            if row.get('status') == 'Completed': return "Completed"
-            if row['start'] < today: return "Overdue"
+            if row['Start'] < today: return "Completed"
             return "Upcoming"
-        
-        df['calc_status'] = df.apply(get_status, axis=1)
-        
-        # Horizontal Chart using Altair (Gantt style)
-        chart = alt.Chart(df).mark_bar().encode(
-            x='start',
-            x2='end',
-            y='event',
-            color=alt.Color('calc_status', scale=alt.Scale(domain=['Completed', 'Upcoming', 'Overdue'], range=['green', 'blue', 'red'])),
-            tooltip=['date', 'event', 'owner', 'logistics']
-        ).properties(height=300)
+        df['Status'] = df.apply(get_status, axis=1)
+
+        # 1. VISUAL LINE (Altair)
+        chart = alt.Chart(df).mark_bar(cornerRadius=10, height=20).encode(
+            x=alt.X('Start', title='Timeline', axis=alt.Axis(format='%d %b %Y')),
+            x2='End',
+            y=alt.Y('event', title=None, sort='x'),
+            color=alt.Color('Status', scale=alt.Scale(domain=['Completed', 'Upcoming'], range=['#28a745', '#007bff'])),
+            tooltip=['event', 'current_date', 'owner', 'logistics']
+        ).properties(title="Case Timeline", height=400)
         
         st.altair_chart(chart, use_container_width=True)
-        
-        # Detailed Table Below
-        st.markdown("### Detailed Schedule")
-        
-        # Arbitrator Editing
-        if role == 'arbitrator':
-            edited_tl = st.data_editor(df, num_rows="dynamic", use_container_width=True)
-            if st.button("Update Timetable"):
-                # Save logic (simplified conversion back to json)
-                new_tl = json.loads(edited_tl.to_json(orient="records", date_format="iso"))
-                # Clean up altair columns before saving
-                cleaned_tl = []
-                for i in new_tl:
-                    clean_item = {k: v for k, v in i.items() if k not in ['start', 'end', 'calc_status']}
-                    cleaned_tl.append(clean_item)
-                
-                save_complex_data("timeline", cleaned_tl)
-                notify_parties("Procedural Timetable Modified", "The Tribunal has updated the procedural timetable. Please check the portal.")
-                st.success("Updated & Notified")
-        else:
-            st.dataframe(df[['date', 'event', 'owner', 'calc_status', 'logistics']], use_container_width=True)
 
-# --- 2. LOGISTICS & REMINDERS ---
-with tab_log:
-    st.subheader("Event Logistics & Reminders")
-    
-    # Find next upcoming event
-    upcoming = [e for e in timeline if datetime.strptime(e['date'], "%Y-%m-%d").date() >= date.today()]
-    if upcoming:
-        next_ev = sorted(upcoming, key=lambda x: x['date'])[0]
-        days_left = (datetime.strptime(next_ev['date'], "%Y-%m-%d").date() - date.today()).days
+        # 2. DETAILED TABLE
+        st.markdown("### Schedule Details")
+        display_df = df[['event', 'current_date', 'owner', 'logistics', 'Status']].copy()
+        display_df.columns = ['Event', 'Date', 'Responsible Party', 'Logistics / Instructions', 'Status']
         
-        st.info(f"**Next Event:** {next_ev['event']} ({next_ev['date']})")
-        
-        c1, c2 = st.columns(2)
-        c1.metric("Days Remaining", f"{days_left} Days")
-        c2.write(f"**Action Required by:** {next_ev['owner']}")
-        
-        st.markdown(f"**Logistics Instructions:**\n{next_ev.get('logistics', 'No specific instructions.')}")
-        
-        if role == 'arbitrator':
-            if st.button("🔔 Trigger Reminder Notification"):
-                body = f"Reminder: {next_ev['event']} is due in {days_left} days.\nLogistics: {next_ev.get('logistics', '-')}"
-                notify_parties(f"Reminder: {next_ev['event']}", body)
-                
-    else:
-        st.success("No upcoming events scheduled.")
+        st.dataframe(
+            display_df, 
+            use_container_width=True,
+            column_config={
+                "Status": st.column_config.TextColumn("Status", width="small"),
+                "Logistics / Instructions": st.column_config.TextColumn("Logistics", width="large")
+            },
+            hide_index=True
+        )
 
-# --- 3. DELAY REQUESTS ---
-with tab_delay:
-    st.subheader("Extension of Time Requests")
+        # 3. ARBITRATOR MODIFICATION
+        if role == 'arbitrator':
+            st.divider()
+            with st.expander("Modify Schedule (Arbitrator Only)"):
+                with st.form("mod_schedule"):
+                    event_to_mod = st.selectbox("Select Event to Move", [e['event'] for e in timeline])
+                    new_date = st.date_input("New Date")
+                    reason = st.text_input("Reason for Change")
+                    
+                    if st.form_submit_button("Update Schedule"):
+                        for e in timeline:
+                            if e['event'] == event_to_mod:
+                                old_date = e['current_date']
+                                e['current_date'] = str(new_date)
+                                e['history'].append(f"Moved from {old_date} to {new_date} by Tribunal. Reason: {reason}")
+                        
+                        save_complex_data("timeline", timeline)
+                        send_email_notification(get_party_emails(), "Timetable Updated", f"The Tribunal has moved '{event_to_mod}' to {new_date}.\nReason: {reason}")
+                        st.success("Schedule updated and parties notified.")
+                        st.rerun()
+
+# --- TAB 2: EXTENSION OF TIME (EoT) ---
+with tab2:
+    st.subheader("Requests for Extension of Time")
     
-    if role != 'arbitrator':
-        with st.form("req_delay"):
-            target_event = st.selectbox("Select Event", [e['event'] for e in timeline])
-            reason = st.text_area("Reason for Delay Request")
+    # Request Form (Parties)
+    if role in ['claimant', 'respondent']:
+        with st.form("eot_form"):
+            target_event = st.selectbox("Request Delay For", [e['event'] for e in timeline if e['status'] == 'Upcoming'])
+            reason_text = st.text_area("Reason for Request (e.g., Unforeseen circumstances)")
+            requested_date = st.date_input("Proposed New Date")
+            
             if st.form_submit_button("Submit Request"):
                 delays.append({
-                    "event": target_event, "requestor": role, "reason": reason, 
-                    "status": "Pending", "tribunal_reason": ""
+                    "event": target_event,
+                    "requestor": role,
+                    "reason": reason_text,
+                    "proposed_date": str(requested_date),
+                    "status": "Pending",
+                    "tribunal_decision": ""
                 })
-                data['delays'] = delays
-                save_complex_data("delays", delays) 
+                save_complex_data("delays", delays)
+                send_email_notification([], f"EoT Request: {target_event}", f"{role.title()} requests delay until {requested_date}.\nReason: {reason_text}")
                 st.success("Request submitted to Tribunal.")
-                
-    # Shared View of Requests
+
+    # Review List (All)
     if delays:
         for i, req in enumerate(delays):
             with st.container(border=True):
                 c1, c2, c3 = st.columns([2, 1, 1])
-                c1.write(f"**{req['event']}** (Req by: {req['requestor']})")
-                c1.caption(f"Reason: {req['reason']}")
-                c2.write(f"Status: **{req['status']}**")
+                c1.markdown(f"**{req['event']}**")
+                c1.caption(f"Requestor: {req['requestor'].title()} | Proposed: {req['proposed_date']}")
+                c1.write(f"*Reason:* {req['reason']}")
                 
+                c2.markdown(f"**Status:** `{req['status']}`")
+                if req['tribunal_decision']:
+                    c2.info(f"Decision: {req['tribunal_decision']}")
+
+                # Arbitrator Action
                 if role == 'arbitrator' and req['status'] == "Pending":
-                    reason_arb = c3.text_input("Decision Reason", key=f"r_{i}")
-                    if c3.button("Approve", key=f"a_{i}"):
+                    decision_reason = c3.text_input("Reasoning", key=f"dec_{i}")
+                    if c3.button("Approve", key=f"app_{i}"):
                         req['status'] = "Approved"
-                        req['tribunal_reason'] = reason_arb
-                        data['delays'] = delays
+                        req['tribunal_decision'] = decision_reason
+                        # Update Timeline
+                        for e in timeline:
+                            if e['event'] == req['event']:
+                                e['current_date'] = req['proposed_date']
+                                e['history'].append(f"EoT Approved for {req['requestor']}. New Date: {req['proposed_date']}")
+                        
                         save_complex_data("delays", delays)
-                        notify_parties(f"Extension Approved: {req['event']}", f"Approved. Reason: {reason_arb}")
+                        save_complex_data("timeline", timeline)
+                        send_email_notification(get_party_emails(), f"EoT Approved: {req['event']}", f"The Tribunal has approved the delay to {req['proposed_date']}.\nReason: {decision_reason}")
                         st.rerun()
-                    if c3.button("Deny", key=f"d_{i}"):
+                        
+                    if c3.button("Deny", key=f"den_{i}"):
                         req['status'] = "Denied"
-                        req['tribunal_reason'] = reason_arb
-                        data['delays'] = delays
+                        req['tribunal_decision'] = decision_reason
                         save_complex_data("delays", delays)
-                        notify_parties(f"Extension Denied: {req['event']}", f"Denied. Reason: {reason_arb}")
+                        send_email_notification(get_party_emails(), f"EoT Denied: {req['event']}", f"The Tribunal has denied the delay.\nReason: {decision_reason}")
                         st.rerun()
-                elif req.get('tribunal_reason'):
-                    c3.info(f"Tribunal Note: {req['tribunal_reason']}")
     else:
-        st.info("No active delay requests.")
+        st.info("No extension requests pending.")
+
+# --- TAB 3: HISTORY ---
+with tab3:
+    st.subheader("Procedural History & Changes")
+    history_log = []
+    for e in timeline:
+        for h in e.get('history', []):
+            history_log.append({"Event": e['event'], "Change Log": h})
+            
+    if history_log:
+        st.dataframe(pd.DataFrame(history_log), use_container_width=True)
+    else:
+        st.caption("No changes have been made to the original schedule yet.")
