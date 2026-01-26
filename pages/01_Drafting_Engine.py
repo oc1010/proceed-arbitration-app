@@ -31,8 +31,8 @@ with st.sidebar:
 st.title("Procedural Order No. 1 | Drafting Engine")
 
 # --- 1. INITIALIZE SESSION STATE (Anti-Jump Fix) ---
-# We use a specific prefix 'de_' (Drafting Engine) for all keys to ensure uniqueness
-# and prevent the app from resetting values on every rerun.
+# This block ensures these variables exist before any widget tries to use them.
+# We use a specific prefix 'de_' (Drafting Engine) for all keys to ensure uniqueness.
 
 DEFAULTS = {
     'de_case_number': 'ARB/24/001',
@@ -54,10 +54,18 @@ DEFAULTS = {
     'de_hours': '09:30 - 17:30',
     'de_agenda': '', 'de_prehear': '',
     'de_time_abbr': '7 days', 'de_time_contact': '7 days', 'de_time_new_counsel': 'immediately',
-    'de_d1': date.today(), 'de_d2': date.today() + timedelta(weeks=4),
-    'de_d3': date.today() + timedelta(weeks=6), 'de_d8': date.today() + timedelta(weeks=10),
-    'de_d9': date.today() + timedelta(weeks=14), 'de_d10': date.today() + timedelta(weeks=18),
-    'de_d12': date.today() + timedelta(weeks=22), 'de_d14': date.today() + timedelta(weeks=24)
+    'de_style': 'Memorial', # Default style
+    'de_bifurc_status': 'not bifurcated',
+    'de_inst': 'LCIA',
+    # Dates
+    'de_d1': date.today(), 
+    'de_d2': date.today() + timedelta(weeks=4),
+    'de_d3': date.today() + timedelta(weeks=6), 
+    'de_d8': date.today() + timedelta(weeks=10),
+    'de_d9': date.today() + timedelta(weeks=14), 
+    'de_d10': date.today() + timedelta(weeks=18),
+    'de_d12': date.today() + timedelta(weeks=22), 
+    'de_d14': date.today() + timedelta(weeks=24)
 }
 
 # Initialize state if missing
@@ -319,16 +327,14 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("General Details")
     c1, c2 = st.columns(2)
-    # Using explicit keys (e.g. 'de_case_number') prevents UI jumping
+    # Explicit keys linked to DEFAULTS
     st.text_input("Case Reference Number", key="de_case_number")
     st.text_input("Seat of Arbitration", key="de_seat")
     
-    # We don't bind date input to a context dict here, we bind to session state key
-    st.date_input("First Procedural Meeting Date", key="de_d1") # Reusing d1 or a meeting date key? Let's assume d1 for now or add specific
-    # Correction: use a specific key if needed, but for simplicity we rely on defaults
+    st.date_input("First Procedural Meeting Date", key="de_d1") 
     
     st.text_input("Governing Law", key="de_law")
-    st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst", index=0)
+    st.selectbox("Arbitral Institution", ["LCIA", "ICC", "SIAC", "HKIAC", "ICDR"], key="de_inst")
     
     st.divider()
     st.markdown("#### Procedural Structure")
@@ -346,23 +352,16 @@ with tabs[3]:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### Claimant")
-        rep_info_c = resp_p2.get('claimant', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Claimant)", key="de_claimant_rep1")
         st.text_input("Co-Counsel (Claimant)", key="de_claimant_rep2")
         st.text_area("Client Address (Claimant)", key="de_claimant_addr")
-        # Pre-fill logic check:
-        if rep_info_c and rep_info_c != "Pending" and not st.session_state.de_claimant_contact:
-             st.session_state.de_claimant_contact = rep_info_c
         st.text_area("Counsel Contact (Claimant)", key="de_claimant_contact", height=150)
         
     with c2:
         st.markdown("### Respondent")
-        rep_info_r = resp_p2.get('respondent', {}).get('reps_info', '')
         st.text_input("Lead Counsel (Respondent)", key="de_resp_rep1")
         st.text_input("Co-Counsel (Respondent)", key="de_resp_rep2")
         st.text_area("Client Address (Respondent)", key="de_resp_addr")
-        if rep_info_r and rep_info_r != "Pending" and not st.session_state.de_resp_contact:
-             st.session_state.de_resp_contact = rep_info_r
         st.text_area("Counsel Contact (Respondent)", key="de_resp_contact", height=150)
 
 # --- TAB 5: TRIBUNAL ---
@@ -385,9 +384,9 @@ with tabs[5]:
     st.subheader("Procedural Timetable")
     st.markdown("#### Style Preference")
     display_hint("style")
+    # Access style directly from session state
     proc_style = st.radio("Select Style", ["Memorial", "Pleading"], horizontal=True, key="de_style")
     
-    d = {}
     c1, c2 = st.columns(2)
     with c1:
         st.date_input("1. Statement of Case", key="de_d1")
