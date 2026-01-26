@@ -16,81 +16,80 @@ HEADERS = {
     "X-Master-Key": API_KEY
 }
 
-# --- CENTRAL NOTIFICATION HANDLER ---
-def send_notification(to_roles, subject, body, to_emails=None):
+# --- NOTIFICATION HANDLER ---
+def send_email_notification(to_emails, subject, body):
     """
-    Sends a professional email and logs the notification in the app.
+    1. Logs notification to 'notifications' bin for the in-app tab.
+    2. Sends REAL professional email via SMTP.
     """
-    # 1. LOG TO DATABASE (IN-APP)
+    # A. LOG TO DATABASE (IN-APP)
     try:
+        # Load existing notifications
         full_data = load_complex_data()
         if "notifications" not in full_data: full_data["notifications"] = []
         
+        # Determine roles based on context (simplified for logging)
+        # We log it generally so it appears in the system
         new_note = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "to_roles": to_roles, 
+            "to_roles": ["Recipients"], # Generic label since we only have emails here
             "subject": subject,
             "body": body
         }
         full_data["notifications"].append(new_note)
+        
+        # Save back
         requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=full_data, headers=HEADERS)
-        load_complex_data.clear()
+        load_complex_data.clear() # Clear cache
     except Exception as e:
         print(f"DB Log Failed: {e}")
 
-    # 2. RESOLVE EMAILS
-    if not to_emails:
-        to_emails = []
-        p2 = load_responses("phase2")
-        # Check roles and fetch emails
-        if 'claimant' in to_roles:
-            val = p2.get('claimant', {}).get('contact_email')
-            if val: to_emails.append(val)
-        if 'respondent' in to_roles:
-            val = p2.get('respondent', {}).get('contact_email')
-            if val: to_emails.append(val)
-        
-        # Remove duplicates to avoid spamming the same inbox multiple times
-        to_emails = list(set(to_emails))
-
-    # 3. CONSTRUCT PROFESSIONAL EMAIL
+    # B. SEND REAL EMAIL (Professional)
     smtp_user = st.secrets.get("ST_MAIL_USER")
     smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
     smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
     smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
 
-    # Professional Template
-    full_body = f"""
-    [AUTOMATIC NOTIFICATION - PROCEED ARBITRATION PLATFORM]
-    
-    Subject: {subject}
-    
-    -------------------------------------------------------
-    {body}
-    -------------------------------------------------------
-    
-    PLEASE DO NOT REPLY DIRECTLY TO THIS EMAIL.
-    For any queries, please reach out to the Arbitrator directly or log in to the PROCEED platform.
-    """
-
+    # Professional Template Construction
+    # We use a loop to send individually to ensure privacy and delivery of duplicates
     if smtp_user and smtp_pass and to_emails:
         try:
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
                 
-                # Send individually to ensure delivery even if emails are identical or Bcc issues arise
                 for recipient in to_emails:
+                    if not recipient: continue
+                    
                     msg = MIMEMultipart()
                     msg['From'] = smtp_user
                     msg['To'] = recipient
                     msg['Subject'] = f"[PROCEED] {subject}"
-                    msg.attach(MIMEText(full_body, 'plain'))
+                    
+                    # Professional Body
+                    formatted_body = f"""
+AUTOMATIC NOTIFICATION - PROCEED ARBITRATION PLATFORM
+=====================================================
+
+Subject: {subject}
+Date: {datetime.now().strftime("%d %B %Y, %H:%M UTC")}
+
+-----------------------------------------------------
+MESSAGE:
+
+{body}
+
+-----------------------------------------------------
+
+PLEASE DO NOT REPLY DIRECTLY TO THIS EMAIL.
+This is an automated message. For any queries, please reach out to the Arbitrator directly or log in to the PROCEED platform.
+"""
+                    msg.attach(MIMEText(formatted_body, 'plain'))
                     server.send_message(msg)
             
             st.toast(f"📧 Notification sent to {len(to_emails)} recipient(s).", icon="✅")
         except Exception as e:
-            st.error(f"⚠️ Email Error: {e}")
+            st.error(f"⚠️ Email Failed: {e}")
     else:
         print("Email skipped: Credentials missing or no recipients.")
 
@@ -151,16 +150,12 @@ def save_complex_data(key, sub_data):
 
 def reset_database():
     empty_complex = {
-        "timeline": [], 
-        "delays": [],
-        "notifications": [],
+        "timeline": [], "delays": [], "notifications": [],
         "doc_prod": {"claimant": [], "respondent": []}, 
         "costs": {"claimant_log": [], "respondent_log": [], "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, "app_tagging": []}
     }
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_STRUCT}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_RESP}", json={"initial_setup": True}, headers=HEADERS)
     requests.put(f"https://api.jsonbin.io/v3/b/{BIN_TIME}", json=empty_complex, headers=HEADERS)
-    load_full_config.clear()
-    load_responses.clear()
-    load_complex_data.clear()
+    load_full_config.clear(); load_responses.clear(); load_complex_data.clear()
     return True
