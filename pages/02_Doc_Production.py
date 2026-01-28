@@ -65,13 +65,10 @@ def get_active_request():
 
 def render_read_only_block(label, content, sub_label=None):
     """Renders a clean, neutral box for read-only data."""
-    if not content or content == "Pending":
-        content = "—"
-    
+    if not content or content == "Pending": content = "—"
     with st.container(border=True):
         st.markdown(f"**{label}**")
-        if sub_label:
-            st.caption(sub_label)
+        if sub_label: st.caption(sub_label)
         st.write(content)
 
 # ==============================================================================
@@ -80,7 +77,7 @@ def render_read_only_block(label, content, sub_label=None):
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
-    # Unified Tabs for ALL Roles (Fixes the "Excel/Checkbox" issue)
+    # Unified Tabs
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
     def render_request_list(party_key):
@@ -91,7 +88,7 @@ if st.session_state['doc_view_mode'] == 'list':
             if st.button(f"➕ Create New Request ({party_key.title()})", key=f"btn_new_{party_key}"):
                 new_idx = len(request_list)
                 new_req = {
-                    "req_no": f"{new_idx + 1}.", # - Simple numbering
+                    "req_no": f"{new_idx + 1}.", # Auto-generated
                     "category": CATEGORIES[0],
                     "date_req": str(date.today()),
                     "urgency": URGENCY_LEVELS[0],
@@ -111,20 +108,21 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        # [0.5] width for the button ensures it looks like "1.", not a big pill
-        cols = st.columns([0.8, 3, 1.5, 1.5, 1.5, 2])
+        # Adjusted width [0.6] to ensure "10." fits without being an empty box
+        cols = st.columns([0.6, 3, 1.5, 1.5, 1.5, 2])
         headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
         st.divider()
 
         # TABLE ROWS
         for i, req in enumerate(request_list):
-            c1, c2, c3, c4, c5, c6 = st.columns([0.8, 3, 1.5, 1.5, 1.5, 2])
+            c1, c2, c3, c4, c5, c6 = st.columns([0.6, 3, 1.5, 1.5, 1.5, 2])
             
             # 1. CLICKABLE REQ NO
-            # We FORCE the label to be "1.", "2." regardless of DB content to fix alignment
+            # STRICTLY ENFORCE "1." FORMAT based on Index
             clean_label = f"{i+1}." 
             
+            # We use use_container_width=True to fill the column, but the column is narrow (0.6)
             if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
@@ -132,7 +130,8 @@ if st.session_state['doc_view_mode'] == 'list':
 
             # 2. DATA
             cat_full = req.get('category', 'Unknown')
-            # Safe shorten
+            if not cat_full: cat_full = "Unknown"
+            
             parts = cat_full.split(' ')
             cat_short = " ".join(parts[1:3]) + "..." if len(parts) > 2 else cat_full
             c2.caption(cat_short)
@@ -177,11 +176,11 @@ elif st.session_state['doc_view_mode'] == 'details':
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
     
-    # Title uses clean index
     req_title = f"{idx+1}."
     req_desc_short = req.get('desc', 'No description provided')[:100]
     
-    st.subheader(f"Managing Request No. {req_title}")
+    # - Clean Header
+    st.subheader(f"Managing Request {req_title}")
     st.caption(f"Context: {req_desc_short}...")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -193,7 +192,6 @@ elif st.session_state['doc_view_mode'] == 'details':
             st.caption(f"Filed: {req.get('date_req')}")
             has_objection = req.get('objection', {}).get('date')
             
-            # Logic: If Objection exists, Request is Locked -> "View"
             btn_label = "View Details" if has_objection else "Edit Request"
             if st.button(btn_label, key="btn_view_req", use_container_width=True):
                 set_state('form', idx, 'request')
@@ -213,7 +211,6 @@ elif st.session_state['doc_view_mode'] == 'details':
                     st.rerun()
             else:
                 st.caption("Pending")
-                # Only let people enter if Request is ready
                 if st.button("File Objection", key="btn_file_obj", use_container_width=True):
                     set_state('form', idx, 'objection')
                     st.rerun()
@@ -277,26 +274,44 @@ elif st.session_state['doc_view_mode'] == 'form':
     if f_type == 'request':
         is_owner = (role == list_owner)
         has_obj = req.get('objection', {}).get('date') 
+        
+        # Calculate strict number for display
         clean_num = f"{st.session_state['active_req_idx']+1}."
 
         if is_owner and not has_obj:
             st.subheader("📝 Edit Request")
             with st.form("frm_request"):
-                # Clean Numbering forced
-                new_no = st.text_input("Request No.", value=req.get('req_no', clean_num))
-                new_cat = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(req.get('category')) if req.get('category') in CATEGORIES else 0)
-                new_date = st.date_input("Date", value=pd.to_datetime(req.get('date_req', date.today())))
-                new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=URGENCY_LEVELS.index(req.get('urgency')) if req.get('urgency') in URGENCY_LEVELS else 0)
+                # DISABLED: Users cannot edit this field manually anymore
+                new_no = st.text_input("Request No. (Auto-Assigned)", value=clean_num, disabled=True)
+                
+                # Category Dropdown
+                curr_cat = req.get('category')
+                cat_idx = 0
+                if curr_cat in CATEGORIES: cat_idx = CATEGORIES.index(curr_cat)
+                new_cat = st.selectbox("Category", CATEGORIES, index=cat_idx)
+                
+                # Date
+                d_val = pd.to_datetime(req.get('date_req', date.today()))
+                new_date = st.date_input("Date", value=d_val)
+                
+                # Urgency
+                curr_urg = req.get('urgency')
+                urg_idx = 0
+                if curr_urg in URGENCY_LEVELS: urg_idx = URGENCY_LEVELS.index(curr_urg)
+                new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=urg_idx)
+                
                 new_desc = st.text_area("Description & Relevance (Required)", value=req.get('desc', ''), height=150)
                 
-                # Submit button strictly inside form
+                # Submit Button Inside Form
                 if st.form_submit_button("Save Request"):
                     if not new_desc.strip():
                         st.error("Description cannot be empty.")
                     else:
                         req.update({
-                            'req_no': new_no, 'category': new_cat, 
-                            'date_req': str(new_date), 'urgency': new_urg, 
+                            'req_no': clean_num, # Force update in DB
+                            'category': new_cat, 
+                            'date_req': str(new_date), 
+                            'urgency': new_urg, 
                             'desc': new_desc
                         })
                         save_current_data()
@@ -304,10 +319,10 @@ elif st.session_state['doc_view_mode'] == 'form':
                         set_state('details')
                         st.rerun()
         else:
-            # READ ONLY (No st.form used here, preventing errors)
+            # READ ONLY VIEW
             st.subheader("📄 Request Details")
             c1, c2 = st.columns(2)
-            with c1: render_read_only_block("Request No.", req.get('req_no', clean_num))
+            with c1: render_read_only_block("Request No.", clean_num)
             with c2: render_read_only_block("Date", req.get('date_req'))
             c3, c4 = st.columns(2)
             with c3: render_read_only_block("Category", req.get('category'))
@@ -346,6 +361,7 @@ elif st.session_state['doc_view_mode'] == 'form':
                         st.rerun()
         else:
             st.subheader("Objection Status")
+            # - Neutral Read Only
             status_text = "Objected" if curr_obj.get('is_objected') == "Yes" else "No Objection"
             render_read_only_block("Status", status_text)
             render_read_only_block("Date", curr_obj.get('date'))
