@@ -42,7 +42,6 @@ CATEGORIES = [
     "(f) Other Documents"
 ]
 URGENCY_LEVELS = ["(a) Low", "(b) Medium", "(c) High [Tribunal Priority]"]
-YES_NO_OPTS = ["(a) Yes", "(b) No"]
 DETERMINATION_OPTS = ["Allowed", "Allowed in Part", "Denied", "Reserved"]
 
 # --- HELPER FUNCTIONS ---
@@ -64,11 +63,29 @@ def get_active_request():
         return lst[idx]
     return {}
 
+def render_read_only_block(label, content, style="default"):
+    """Renders a clean, non-input box display for read-only data"""
+    if not content or content == "Pending":
+        return # Don't render empty blocks if not needed
+    
+    with st.container(border=True):
+        if style == "header":
+            st.markdown(f"### {label}")
+            st.write(content)
+        elif style == "success":
+            st.success(f"**{label}**\n\n{content}")
+        elif style == "warning":
+            st.warning(f"**{label}**\n\n{content}")
+        elif style == "error":
+            st.error(f"**{label}**\n\n{content}")
+        else:
+            st.markdown(f"**{label}**")
+            st.caption(content)
+
 # --- VIEW 1: REDFERN SCHEDULE (LIST VIEW) ---
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
-    # Tabs for Parties
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
     def render_request_list(party_key):
@@ -83,7 +100,7 @@ if st.session_state['doc_view_mode'] == 'list':
                     "category": CATEGORIES[0],
                     "date_req": str(date.today()),
                     "urgency": URGENCY_LEVELS[0],
-                    "desc": "Description of documents...",
+                    "desc": "", # Empty desc to trigger validation later if needed
                     "objection": {}, 
                     "reply": {}, 
                     "determination": {}
@@ -98,43 +115,39 @@ if st.session_state['doc_view_mode'] == 'list':
             st.info("No requests submitted yet.")
             return
 
-        # --- UNIFIED TABLE HEADER ---
+        # TABLE HEADER
         cols = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
         headers = ["Req No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
         st.divider()
 
-        # --- TABLE ROWS ---
+        # TABLE ROWS
         for i, req in enumerate(request_list):
             c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
             
-            # 1. CLICKABLE REQUEST NUMBER
+            # 1. CLICKABLE REQ NO
             if c1.button(req.get('req_no', f'#{i+1}'), key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
                 st.rerun()
 
-            # 2. CATEGORY
+            # 2. DATA
             cat_full = req.get('category', 'Unknown')
             cat_short = cat_full.split(' ')[1] + " " + cat_full.split(' ')[2] if len(cat_full.split(' ')) > 2 else cat_full
             c2.caption(cat_short)
-            
-            # 3. DATE
             c3.write(req.get('date_req', '-'))
             
-            # 4. URGENCY
             urg = req.get('urgency', '')
             if "High" in urg: c4.error("High")
             elif "Medium" in urg: c4.warning("Medium")
             else: c4.success("Low")
             
-            # 5. OBJECTION STATUS
+            # 3. STATUS
             obj_status = req.get('objection', {}).get('is_objected', 'Pending')
             if "Yes" in obj_status: c5.warning("Yes")
             elif "No" in obj_status: c5.success("No")
             else: c5.write("-")
 
-            # 6. TRIBUNAL RULING
             det = req.get('determination', {})
             decision = det.get('decision')
             dec_date = det.get('date')
@@ -160,68 +173,85 @@ elif st.session_state['doc_view_mode'] == 'details':
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
     
-    # Header Info
+    # FIXED HEADER: Handle missing or empty req numbers
     req_title = req.get('req_no', f'Request #{idx+1}')
-    req_desc_short = req.get('desc', '')[:60] + "..." if len(req.get('desc', '')) > 60 else req.get('desc', '')
+    req_desc_short = req.get('desc', 'No description provided')[:100]
     
     st.subheader(f"Managing: {req_title}")
-    st.caption(f"Context: {req_desc_short}")
+    st.caption(f"Context: {req_desc_short}...")
     
     col1, col2, col3, col4 = st.columns(4)
     
-    # 1. REQUEST
+    # 1. REQUEST CARD
     with col1:
         with st.container(border=True):
             st.markdown("### 1. Request")
             st.caption(f"Filed: {req.get('date_req')}")
-            if st.button("View / Edit Request", use_container_width=True):
+            # Logic: Only owner can edit, but only if no objection yet (strict Redfern flow)
+            has_objection = req.get('objection', {}).get('date')
+            btn_label = "View Details" if has_objection else "Edit Request"
+            
+            if st.button(btn_label, key="btn_view_req", use_container_width=True):
                 set_state('form', idx, 'request')
                 st.rerun()
 
-    # 2. OBJECTION
+    # 2. OBJECTION CARD
     with col2:
         with st.container(border=True):
             st.markdown("### 2. Objection")
             obj_data = req.get('objection', {})
-            obj_status = obj_data.get('is_objected', 'Pending')
             
-            if "Yes" in obj_status: st.error("Objected")
-            elif "No" in obj_status: st.success("No Objection")
-            else: st.caption("Pending Response")
-            
-            if st.button("File / View Objection", use_container_width=True):
-                set_state('form', idx, 'objection')
-                st.rerun()
+            if obj_data:
+                # Already filled
+                status = "Objected" if obj_data.get('is_objected') == "Yes" else "No Objection"
+                style = "error" if status == "Objected" else "success"
+                if style == "error": st.error(status)
+                else: st.success(status)
+                
+                if st.button("View Objection", key="btn_view_obj", use_container_width=True):
+                    set_state('form', idx, 'objection')
+                    st.rerun()
+            else:
+                st.caption("Pending")
+                # Logic: Can only file if Request exists
+                if st.button("File Objection", key="btn_file_obj", use_container_width=True):
+                    set_state('form', idx, 'objection')
+                    st.rerun()
 
-    # 3. REPLY
+    # 3. REPLY CARD
     with col3:
         with st.container(border=True):
             st.markdown("### 3. Reply")
-            has_objection = "Yes" in req.get('objection', {}).get('is_objected', '')
-            
-            if has_objection:
-                rep_status = req.get('reply', {}).get('has_replied', 'Pending')
-                if "Yes" in rep_status: st.warning("Reply Filed")
-                else: st.caption("Pending Reply")
-                
-                if st.button("File / View Reply", use_container_width=True):
+            # Logic: Can only reply if there is an objection
+            is_objected = req.get('objection', {}).get('is_objected') == "Yes"
+            reply_data = req.get('reply', {})
+
+            if reply_data:
+                 # Already filled
+                status = "Reply Filed" if reply_data.get('has_replied') == "Yes" else "No Reply"
+                st.info(status)
+                if st.button("View Reply", key="btn_view_rep", use_container_width=True):
+                    set_state('form', idx, 'reply')
+                    st.rerun()
+            elif is_objected:
+                st.caption("Pending Reply")
+                if st.button("File Reply", key="btn_file_rep", use_container_width=True):
                     set_state('form', idx, 'reply')
                     st.rerun()
             else:
-                st.info("No Objection")
-                st.caption("Reply not required.")
-                st.button("File / View Reply", disabled=True, use_container_width=True)
+                st.caption("N/A (No Objection)")
+                st.button("No Action Needed", disabled=True, use_container_width=True)
 
-    # 4. RULING
+    # 4. RULING CARD
     with col4:
         with st.container(border=True):
             st.markdown("### 4. Decision")
             det = req.get('determination', {}).get('decision', 'Pending')
             st.info(f"Status: {det}")
             
-            # Logic: Arbitrator edits, Parties VIEW.
             if role == 'arbitrator':
-                if st.button("Issue Decision", use_container_width=True):
+                btn_txt = "Issue Decision" if det == "Pending" else "Edit Decision"
+                if st.button(btn_txt, use_container_width=True):
                     set_state('form', idx, 'determination')
                     st.rerun()
             else:
@@ -230,104 +260,150 @@ elif st.session_state['doc_view_mode'] == 'details':
                     st.rerun()
 
 
-# --- VIEW 3: INPUT FORMS ---
+# --- VIEW 3: INPUT FORMS & READ-ONLY VIEWS ---
 elif st.session_state['doc_view_mode'] == 'form':
     f_type = st.session_state['active_form_type']
     req = get_active_request()
-    list_owner = st.session_state['active_party_list'] # 'claimant' or 'respondent'
+    list_owner = st.session_state['active_party_list'] 
     
     st.button("⬅️ Back to Hub", on_click=lambda: set_state('details'))
     st.divider()
 
     # --- FORM 1: REQUEST ---
     if f_type == 'request':
-        st.subheader("📝 Request to Produce Documents")
         is_owner = (role == list_owner)
+        has_obj = req.get('objection', {}).get('date') # Check if locked
         
-        # EDIT MODE
-        if is_owner:
+        # EDIT MODE: Only Owner AND Not yet objected to
+        if is_owner and not has_obj:
+            st.subheader("📝 Edit Request")
             with st.form("frm_request"):
                 new_no = st.text_input("Request No.", value=req.get('req_no', ''))
                 new_cat = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(req.get('category')) if req.get('category') in CATEGORIES else 0)
                 new_date = st.date_input("Date", value=pd.to_datetime(req.get('date_req', date.today())))
                 new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=URGENCY_LEVELS.index(req.get('urgency')) if req.get('urgency') in URGENCY_LEVELS else 0)
-                new_desc = st.text_area("Description & Relevance", value=req.get('desc', ''), height=150)
+                new_desc = st.text_area("Description & Relevance (Required)", value=req.get('desc', ''), height=150)
                 
                 if st.form_submit_button("Save Request"):
-                    req.update({
-                        'req_no': new_no, 'category': new_cat, 
-                        'date_req': str(new_date), 'urgency': new_urg, 
-                        'desc': new_desc
-                    })
-                    save_current_data()
-                    st.success("Saved!")
-                    set_state('details')
-                    st.rerun()
-        # READ-ONLY MODE (DISABLED WIDGETS)
+                    if not new_desc.strip():
+                        st.error("Description cannot be empty.")
+                    else:
+                        req.update({
+                            'req_no': new_no, 'category': new_cat, 
+                            'date_req': str(new_date), 'urgency': new_urg, 
+                            'desc': new_desc
+                        })
+                        save_current_data()
+                        st.success("Saved!")
+                        set_state('details')
+                        st.rerun()
+        # READ ONLY MODE
         else:
-            st.info("Read-Only: You cannot edit this request.")
-            st.text_input("Request No.", value=req.get('req_no', ''), disabled=True)
-            st.text_input("Category", value=req.get('category', ''), disabled=True)
-            st.text_input("Urgency", value=req.get('urgency', ''), disabled=True)
-            st.text_area("Description & Relevance", value=req.get('desc', ''), height=150, disabled=True)
+            st.subheader("📄 Request Details")
+            # Nice Clean Display - No Disabled Boxes
+            c1, c2 = st.columns(2)
+            with c1: render_read_only_block("Request No.", req.get('req_no'))
+            with c2: render_read_only_block("Date", req.get('date_req'))
+            
+            c3, c4 = st.columns(2)
+            with c3: render_read_only_block("Category", req.get('category'))
+            with c4: render_read_only_block("Urgency", req.get('urgency'))
+            
+            render_read_only_block("Description & Relevance", req.get('desc'))
+
 
     # --- FORM 2: OBJECTION ---
     elif f_type == 'objection':
-        st.subheader("✋ Objection to Production")
         is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
         curr_obj = req.get('objection', {})
+        is_submitted = bool(curr_obj)
         
-        if is_opponent:
+        # EDIT MODE: Opponent AND Not yet submitted (One shot rule)
+        if is_opponent and not is_submitted:
+            st.subheader("✋ File Objection")
+            st.info(f"Regarding Request: {req.get('req_no')} - {req.get('desc')[:50]}...")
+            
             with st.form("frm_objection"):
-                st.caption(f"Objecting to: {req.get('desc')}")
-                is_obj = st.selectbox("Do you object?", YES_NO_OPTS, index=YES_NO_OPTS.index(curr_obj.get('is_objected')) if curr_obj.get('is_objected') in YES_NO_OPTS else 1)
-                obj_date = st.date_input("Date", value=pd.to_datetime(curr_obj.get('date', date.today())))
-                comments = st.text_area("Grounds for Objection", value=curr_obj.get('reason', ''), height=150)
+                st.write("Do you object to producing these documents?")
+                col_a, col_b = st.columns(2)
                 
-                if st.form_submit_button("Submit Objection"):
-                    req['objection'] = {
-                        'is_objected': is_obj,
-                        'date': str(obj_date),
-                        'reason': comments
-                    }
-                    save_current_data()
-                    st.success("Objection Recorded")
-                    set_state('details')
-                    st.rerun()
+                # We use a radio to force a clear choice
+                choice = st.radio("Decision", ["I Object", "No Objection (Will Produce)"], label_visibility="collapsed")
+                
+                comments = st.text_area("Grounds for Objection (Required if Objecting)", height=150)
+                
+                if st.form_submit_button("Submit Final Decision"):
+                    is_obj_bool = "Yes" if choice == "I Object" else "No"
+                    
+                    # Validation
+                    if is_obj_bool == "Yes" and not comments.strip():
+                        st.error("You must provide grounds for your objection.")
+                    else:
+                        req['objection'] = {
+                            'is_objected': is_obj_bool,
+                            'date': str(date.today()),
+                            'reason': comments if is_obj_bool == "Yes" else "Party confirmed no objection."
+                        }
+                        save_current_data()
+                        st.success("Decision Recorded")
+                        set_state('details')
+                        st.rerun()
+                        
+        # READ ONLY MODE
         else:
-            st.info("Read-Only: View Objection Details")
-            st.text_input("Objected?", value=curr_obj.get('is_objected', 'Pending'), disabled=True)
-            st.text_area("Grounds for Objection", value=curr_obj.get('reason', ''), height=150, disabled=True)
+            st.subheader("Objection Status")
+            status_text = "Objected" if curr_obj.get('is_objected') == "Yes" else "No Objection"
+            
+            render_read_only_block("Status", status_text, style="warning" if status_text=="Objected" else "success")
+            render_read_only_block("Date", curr_obj.get('date'))
+            render_read_only_block("Grounds / Comments", curr_obj.get('reason'))
+
 
     # --- FORM 3: REPLY ---
     elif f_type == 'reply':
-        st.subheader("↩️ Reply to Objection")
         is_owner = (role == list_owner)
         curr_reply = req.get('reply', {})
+        is_submitted = bool(curr_reply)
         
-        with st.expander("View Objection", expanded=True):
-            st.write(req.get('objection', {}).get('reason', 'No text provided.'))
+        # Show context first
+        render_read_only_block("Opposing Party's Objection", req.get('objection', {}).get('reason'), style="warning")
+        st.divider()
 
-        if is_owner:
+        # EDIT MODE: Owner AND Not yet submitted (One shot rule)
+        if is_owner and not is_submitted:
+            st.subheader("↩️ File Reply")
+            
             with st.form("frm_reply"):
-                has_reply = st.selectbox("Maintain Request?", YES_NO_OPTS, index=YES_NO_OPTS.index(curr_reply.get('has_replied')) if curr_reply.get('has_replied') in YES_NO_OPTS else 0)
-                rep_date = st.date_input("Date", value=pd.to_datetime(curr_reply.get('date', date.today())))
-                rep_text = st.text_area("Reply Arguments", value=curr_reply.get('text', ''), height=150)
+                st.write("Do you wish to maintain your request?")
+                choice = st.radio("Decision", ["Maintain Request (File Reply)", "Withdraw Request / Accept Objection"], label_visibility="collapsed")
                 
-                if st.form_submit_button("Submit Reply"):
-                    req['reply'] = {
-                        'has_replied': has_reply,
-                        'date': str(rep_date),
-                        'text': rep_text
-                    }
-                    save_current_data()
-                    st.success("Reply Recorded")
-                    set_state('details')
-                    st.rerun()
+                rep_text = st.text_area("Reply Arguments (Required if Maintaining)", height=150)
+                
+                if st.form_submit_button("Submit Final Reply"):
+                    has_rep_bool = "Yes" if "Maintain" in choice else "No"
+                    
+                    if has_rep_bool == "Yes" and not rep_text.strip():
+                        st.error("You must provide arguments to maintain your request.")
+                    else:
+                        req['reply'] = {
+                            'has_replied': has_rep_bool,
+                            'date': str(date.today()),
+                            'text': rep_text if has_rep_bool == "Yes" else "Request Withdrawn / Objection Accepted."
+                        }
+                        save_current_data()
+                        st.success("Reply Recorded")
+                        set_state('details')
+                        st.rerun()
+                        
+        # READ ONLY MODE
         else:
-            st.info("Read-Only: View Reply Details")
-            st.text_input("Request Maintained?", value=curr_reply.get('has_replied', 'Pending'), disabled=True)
-            st.text_area("Reply Arguments", value=curr_reply.get('text', ''), height=150, disabled=True)
+            st.subheader("Reply Status")
+            status_text = "Maintained" if curr_reply.get('has_replied') == "Yes" else "Withdrawn"
+            
+            render_read_only_block("Status", status_text)
+            render_read_only_block("Date", curr_reply.get('date'))
+            render_read_only_block("Arguments", curr_reply.get('text'))
+
 
     # --- FORM 4: TRIBUNAL DECISION ---
     elif f_type == 'determination':
@@ -335,10 +411,24 @@ elif st.session_state['doc_view_mode'] == 'form':
         is_arb = (role == 'arbitrator')
         curr_det = req.get('determination', {})
         
-        c1, c2, c3 = st.columns(3)
-        c1.info(f"**Request:**\n{req.get('desc')}")
-        c2.warning(f"**Objection:**\n{req.get('objection', {}).get('reason', '-')}")
-        c3.success(f"**Reply:**\n{req.get('reply', {}).get('text', '-')}")
+        # CLEAN READ-ONLY CONTEXT
+        # Instead of big empty boxes, we render nicely formatted blocks
+        
+        with st.expander("Show Full Request Context", expanded=True):
+            st.markdown(f"**1. Request:** {req.get('desc')}")
+            st.divider()
+            
+            c1, c2 = st.columns(2)
+            with c1: 
+                obj_text = req.get('objection', {}).get('reason', 'None')
+                render_read_only_block("2. Objection", obj_text, style="warning")
+            with c2:
+                rep_text = req.get('reply', {}).get('text', 'None')
+                # Only show Reply box if it exists or matters
+                if rep_text != 'None':
+                    render_read_only_block("3. Reply", rep_text, style="default")
+        
+        st.write("")
         
         if is_arb:
             with st.form("frm_determination"):
@@ -357,8 +447,7 @@ elif st.session_state['doc_view_mode'] == 'form':
                     set_state('details')
                     st.rerun()
         else:
-            # Parties can see this now!
-            st.info("Read-Only: Tribunal Determination")
-            st.text_input("Ruling", value=curr_det.get('decision', 'Pending'), disabled=True)
-            st.text_input("Date of Decision", value=curr_det.get('date', '-'), disabled=True)
-            st.text_area("Tribunal's Reasoning", value=curr_det.get('reason', ''), height=150, disabled=True)
+            # Parties View
+            render_read_only_block("Tribunal Ruling", curr_det.get('decision', 'Pending'), style="success" if curr_det.get('decision')=="Allowed" else "default")
+            render_read_only_block("Date of Decision", curr_det.get('date'))
+            render_read_only_block("Tribunal's Reasoning", curr_det.get('reason'))
