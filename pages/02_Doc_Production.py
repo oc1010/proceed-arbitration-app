@@ -74,22 +74,24 @@ def render_read_only_block(label, content, sub_label=None):
             st.caption(sub_label)
         st.write(content)
 
-# --- VIEW 1: REDFERN SCHEDULE (LIST VIEW) ---
+# ==============================================================================
+# VIEW 1: REDFERN SCHEDULE (LIST VIEW)
+# ==============================================================================
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
+    # Unified Tabs for ALL Roles (Fixes the "Excel/Checkbox" issue)
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
     def render_request_list(party_key):
         request_list = doc_prod[party_key]
         
-        # New Request Button (Only for Owner)
+        # New Request Button (Only for List Owner)
         if role == party_key:
             if st.button(f"➕ Create New Request ({party_key.title()})", key=f"btn_new_{party_key}"):
                 new_idx = len(request_list)
-                # STRICT FORMAT: "1.", "2.", "3."
                 new_req = {
-                    "req_no": f"{new_idx + 1}.", 
+                    "req_no": f"{new_idx + 1}.", # - Simple numbering
                     "category": CATEGORIES[0],
                     "date_req": str(date.today()),
                     "urgency": URGENCY_LEVELS[0],
@@ -109,20 +111,19 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        # [0.5] width for the small number
-        cols = st.columns([0.5, 3, 1.5, 1.5, 1.5, 2])
+        # [0.5] width for the button ensures it looks like "1.", not a big pill
+        cols = st.columns([0.8, 3, 1.5, 1.5, 1.5, 2])
         headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
         st.divider()
 
         # TABLE ROWS
         for i, req in enumerate(request_list):
-            c1, c2, c3, c4, c5, c6 = st.columns([0.5, 3, 1.5, 1.5, 1.5, 2])
+            c1, c2, c3, c4, c5, c6 = st.columns([0.8, 3, 1.5, 1.5, 1.5, 2])
             
             # 1. CLICKABLE REQ NO
-            # FORCE SEQUENTIAL NUMBERING based on INDEX (i+1)
-            # This ensures it is always 1., 2., 3. regardless of data messiness
-            clean_label = f"{i+1}."
+            # We FORCE the label to be "1.", "2." regardless of DB content to fix alignment
+            clean_label = f"{i+1}." 
             
             if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
@@ -131,6 +132,7 @@ if st.session_state['doc_view_mode'] == 'list':
 
             # 2. DATA
             cat_full = req.get('category', 'Unknown')
+            # Safe shorten
             parts = cat_full.split(' ')
             cat_short = " ".join(parts[1:3]) + "..." if len(parts) > 2 else cat_full
             c2.caption(cat_short)
@@ -165,7 +167,9 @@ if st.session_state['doc_view_mode'] == 'list':
         render_request_list("respondent")
 
 
-# --- VIEW 2: THE REQUEST HUB (DETAILS) ---
+# ==============================================================================
+# VIEW 2: THE REQUEST HUB (DETAILS)
+# ==============================================================================
 elif st.session_state['doc_view_mode'] == 'details':
     req = get_active_request()
     idx = st.session_state['active_req_idx']
@@ -173,11 +177,11 @@ elif st.session_state['doc_view_mode'] == 'details':
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
     
-    # Force clean numbering in title
+    # Title uses clean index
     req_title = f"{idx+1}."
     req_desc_short = req.get('desc', 'No description provided')[:100]
     
-    st.subheader(f"Managing Request {req_title}")
+    st.subheader(f"Managing Request No. {req_title}")
     st.caption(f"Context: {req_desc_short}...")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -189,6 +193,7 @@ elif st.session_state['doc_view_mode'] == 'details':
             st.caption(f"Filed: {req.get('date_req')}")
             has_objection = req.get('objection', {}).get('date')
             
+            # Logic: If Objection exists, Request is Locked -> "View"
             btn_label = "View Details" if has_objection else "Edit Request"
             if st.button(btn_label, key="btn_view_req", use_container_width=True):
                 set_state('form', idx, 'request')
@@ -208,6 +213,7 @@ elif st.session_state['doc_view_mode'] == 'details':
                     st.rerun()
             else:
                 st.caption("Pending")
+                # Only let people enter if Request is ready
                 if st.button("File Objection", key="btn_file_obj", use_container_width=True):
                     set_state('form', idx, 'objection')
                     st.rerun()
@@ -256,7 +262,9 @@ elif st.session_state['doc_view_mode'] == 'details':
                     st.rerun()
 
 
-# --- VIEW 3: INPUT FORMS & READ-ONLY VIEWS ---
+# ==============================================================================
+# VIEW 3: INPUT FORMS & READ-ONLY VIEWS
+# ==============================================================================
 elif st.session_state['doc_view_mode'] == 'form':
     f_type = st.session_state['active_form_type']
     req = get_active_request()
@@ -269,20 +277,19 @@ elif st.session_state['doc_view_mode'] == 'form':
     if f_type == 'request':
         is_owner = (role == list_owner)
         has_obj = req.get('objection', {}).get('date') 
-        
-        # Calculate clean number
         clean_num = f"{st.session_state['active_req_idx']+1}."
 
         if is_owner and not has_obj:
             st.subheader("📝 Edit Request")
             with st.form("frm_request"):
-                # Force clean numbering in the form
+                # Clean Numbering forced
                 new_no = st.text_input("Request No.", value=req.get('req_no', clean_num))
                 new_cat = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(req.get('category')) if req.get('category') in CATEGORIES else 0)
                 new_date = st.date_input("Date", value=pd.to_datetime(req.get('date_req', date.today())))
                 new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=URGENCY_LEVELS.index(req.get('urgency')) if req.get('urgency') in URGENCY_LEVELS else 0)
                 new_desc = st.text_area("Description & Relevance (Required)", value=req.get('desc', ''), height=150)
                 
+                # Submit button strictly inside form
                 if st.form_submit_button("Save Request"):
                     if not new_desc.strip():
                         st.error("Description cannot be empty.")
@@ -297,6 +304,7 @@ elif st.session_state['doc_view_mode'] == 'form':
                         set_state('details')
                         st.rerun()
         else:
+            # READ ONLY (No st.form used here, preventing errors)
             st.subheader("📄 Request Details")
             c1, c2 = st.columns(2)
             with c1: render_read_only_block("Request No.", req.get('req_no', clean_num))
