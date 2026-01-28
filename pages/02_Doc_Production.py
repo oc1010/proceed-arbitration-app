@@ -18,12 +18,33 @@ if not role:
     if st.button("Log in"): st.switch_page("main.py")
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (FULL NAVIGATION) ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
     st.divider()
     st.page_link("main.py", label="🏠 Home Dashboard")
-    st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
+    
+    # - Ensuring consistent sidebar across apps
+    if role == 'lcia':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
+        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
+        
+    elif role == 'arbitrator':
+        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
+        st.page_link("pages/01_Drafting_Engine.py", label="📝 PO1 Drafting")
+        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
+        
+    elif role in ['claimant', 'respondent']:
+        st.page_link("pages/00_Fill_Questionnaire.py", label="📝 Fill Questionnaires")
+        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
+
+    st.divider()
     if st.button("Logout", use_container_width=True):
         st.session_state['user_role'] = None
         st.switch_page("main.py")
@@ -77,9 +98,8 @@ def render_read_only_block(label, content, sub_label=None):
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
-    # --- DANGER ZONE: FIX BROKEN DATA ---
-    with st.expander("⚠️ Utility: Clear Data (Use this to fix broken layout)"):
-        st.warning("Clicking below will delete ALL document production requests. Use this if the list looks broken.")
+    # --- DANGER ZONE (Retained for fixing data) ---
+    with st.expander("⚠️ Utility: Clear Data (Use if list is broken)"):
         if st.button("🗑️ Reset All Requests"):
             doc_prod["claimant"] = []
             doc_prod["respondent"] = []
@@ -87,7 +107,6 @@ if st.session_state['doc_view_mode'] == 'list':
             st.success("Data wiped. Please create a new request.")
             st.rerun()
     
-    # Unified Tabs
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
     def render_request_list(party_key):
@@ -118,7 +137,6 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        # - Widened first column to '1' to prevent button collapse
         cols = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
         headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -128,8 +146,6 @@ if st.session_state['doc_view_mode'] == 'list':
         for i, req in enumerate(request_list):
             c1, c2, c3, c4, c5, c6 = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
             
-            # 1. CLICKABLE REQ NO
-            # Strict format "1."
             clean_label = f"{i+1}." 
             
             if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
@@ -137,14 +153,11 @@ if st.session_state['doc_view_mode'] == 'list':
                 set_state('details', i)
                 st.rerun()
 
-            # 2. DATA
-            cat_full = req.get('category', 'Unknown')
-            if not cat_full: cat_full = "Unknown"
-            
+            # Display logic
+            cat_full = req.get('category', 'Unknown') or "Unknown"
             parts = cat_full.split(' ')
             cat_short = " ".join(parts[1:3]) + "..." if len(parts) > 2 else cat_full
             c2.caption(cat_short)
-            
             c3.write(req.get('date_req', '-'))
             
             urg = req.get('urgency', '')
@@ -152,7 +165,6 @@ if st.session_state['doc_view_mode'] == 'list':
             elif "Medium" in urg: c4.warning("Medium")
             else: c4.success("Low")
             
-            # 3. STATUS
             obj_status = req.get('objection', {}).get('is_objected', 'Pending')
             if "Yes" in obj_status: c5.warning("Yes")
             elif "No" in obj_status: c5.success("No")
@@ -181,6 +193,7 @@ if st.session_state['doc_view_mode'] == 'list':
 elif st.session_state['doc_view_mode'] == 'details':
     req = get_active_request()
     idx = st.session_state['active_req_idx']
+    list_owner = st.session_state['active_party_list'] # 'claimant' or 'respondent'
     
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
@@ -200,10 +213,16 @@ elif st.session_state['doc_view_mode'] == 'details':
             st.caption(f"Filed: {req.get('date_req')}")
             has_objection = req.get('objection', {}).get('date')
             
-            btn_label = "View Details" if has_objection else "Edit Request"
-            if st.button(btn_label, key="btn_view_req", use_container_width=True):
-                set_state('form', idx, 'request')
-                st.rerun()
+            # Logic: Only Owner can Edit
+            if role == list_owner:
+                btn_label = "View Details" if has_objection else "Edit Request"
+                if st.button(btn_label, key="btn_view_req", use_container_width=True):
+                    set_state('form', idx, 'request')
+                    st.rerun()
+            else:
+                if st.button("View Request", key="btn_view_req_guest", use_container_width=True):
+                    set_state('form', idx, 'request')
+                    st.rerun()
 
     # 2. OBJECTION CARD
     with col2:
@@ -211,17 +230,31 @@ elif st.session_state['doc_view_mode'] == 'details':
             st.markdown("### 2. Objection")
             obj_data = req.get('objection', {})
             
+            # Check if this user is the "Opponent" (The one who should object)
+            # If list is 'claimant', then 'respondent' is the opponent.
+            is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
+            
             if obj_data:
+                # Already filled
                 status = "Objected" if obj_data.get('is_objected') == "Yes" else "No Objection"
                 st.write(f"**{status}**")
                 if st.button("View Objection", key="btn_view_obj", use_container_width=True):
                     set_state('form', idx, 'objection')
                     st.rerun()
             else:
+                # Not filled yet
                 st.caption("Pending")
-                if st.button("File Objection", key="btn_file_obj", use_container_width=True):
-                    set_state('form', idx, 'objection')
-                    st.rerun()
+                
+                # Logic: Only Opponent can file objection. Owner waits.
+                if is_opponent:
+                    if st.button("File Objection", key="btn_file_obj", use_container_width=True):
+                        set_state('form', idx, 'objection')
+                        st.rerun()
+                else:
+                    # Owner (or Arbitrator) cannot file objection to their own list
+                    if role == list_owner:
+                        st.info("Waiting for Opposition")
+                    st.button("File Objection", key="btn_file_obj_dis", disabled=True, use_container_width=True)
 
     # 3. REPLY CARD
     with col3:
@@ -229,6 +262,9 @@ elif st.session_state['doc_view_mode'] == 'details':
             st.markdown("### 3. Reply")
             is_objected = req.get('objection', {}).get('is_objected') == "Yes"
             reply_data = req.get('reply', {})
+            
+            # Check if user is Owner (The one who replies)
+            is_owner = (role == list_owner)
 
             if reply_data:
                 status = "Reply Filed" if reply_data.get('has_replied') == "Yes" else "Withdrawn"
@@ -238,9 +274,14 @@ elif st.session_state['doc_view_mode'] == 'details':
                     st.rerun()
             elif is_objected:
                 st.caption("Pending Reply")
-                if st.button("File Reply", key="btn_file_rep", use_container_width=True):
-                    set_state('form', idx, 'reply')
-                    st.rerun()
+                # Logic: Only Owner can file reply. Opponent waits.
+                if is_owner:
+                    if st.button("File Reply", key="btn_file_rep", use_container_width=True):
+                        set_state('form', idx, 'reply')
+                        st.rerun()
+                else:
+                    if role != 'arbitrator': st.info("Waiting for Reply")
+                    st.button("File Reply", key="btn_file_rep_dis", disabled=True, use_container_width=True)
             else:
                 st.caption("N/A (No Objection)")
                 st.button("No Action Needed", disabled=True, use_container_width=True)
@@ -321,7 +362,6 @@ elif st.session_state['doc_view_mode'] == 'form':
                         set_state('details')
                         st.rerun()
         else:
-            # READ ONLY VIEW
             st.subheader("📄 Request Details")
             c1, c2 = st.columns(2)
             with c1: render_read_only_block("Request No.", clean_num)
@@ -338,6 +378,7 @@ elif st.session_state['doc_view_mode'] == 'form':
         curr_obj = req.get('objection', {})
         is_submitted = bool(curr_obj)
         
+        # Only allow edit if Opponent AND not yet submitted
         if is_opponent and not is_submitted:
             st.subheader("✋ File Objection")
             st.info(f"Request: {req.get('desc')[:100]}...")
@@ -378,6 +419,7 @@ elif st.session_state['doc_view_mode'] == 'form':
         render_read_only_block("Opposing Party's Objection", req.get('objection', {}).get('reason'))
         st.divider()
 
+        # Only allow edit if Owner AND not yet submitted
         if is_owner and not is_submitted:
             st.subheader("↩️ File Reply")
             with st.form("frm_reply"):
