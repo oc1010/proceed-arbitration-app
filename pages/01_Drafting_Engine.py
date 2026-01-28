@@ -240,12 +240,14 @@ with t5:
     st.header("Costs & Award")
     ctx['cost_allocation_decision'] = decision_widget("Cost Principle", "cost", "cost_allocation", LIB['cost_alloc'])
     ctx['counsel_fee_cap_decision'] = decision_widget("Fee Caps", "fees", "counsel_fees")
-    ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int", "internal_costs")
+    
+    # FIXED KEYS TO PREVENT DUPLICATES
+    ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int_cost", "internal_costs")
     ctx['deposit_structure_decision'] = decision_widget("Deposits", "dep", "deposits")
     
     st.divider()
     ctx['award_currency_decision'] = decision_widget("Currency", "curr", "currency")
-    ctx['interest_decision'] = decision_widget("Interest", "int", "interest")
+    ctx['interest_decision'] = decision_widget("Interest", "interest_rate", "interest")
     ctx['signature_format_decision'] = decision_widget("Signature", "sign", "sign_award")
     ctx['publication_decision'] = decision_widget("Publication", "pub", "publication")
 
