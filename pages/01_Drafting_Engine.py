@@ -8,8 +8,10 @@ import re
 
 st.set_page_config(page_title="Drafting Engine", layout="wide")
 
+# --- ACCESS CONTROL ---
 if st.session_state.get('user_role') != 'arbitrator':
     st.error("Access Denied. Only the Arbitrator can draft PO1.")
+    if st.button("Log in"): st.switch_page("main.py")
     st.stop()
 
 # --- 1. LOAD DATA ---
@@ -26,9 +28,7 @@ def clean_answer(raw_text):
     Example: "**Option A:** Single Phase." -> "Single Phase"
     """
     if not raw_text or raw_text == "Pending": return ""
-    # Remove markdown bolding
     text = raw_text.replace("**", "")
-    # Remove "Option X:" prefix
     if "Option " in text and ":" in text:
         return text.split(":", 1)[1].strip()
     return text.strip()
@@ -38,14 +38,12 @@ def get_legal_text(key, raw_answer):
     Maps the cleaned answer to the full legal clause in LIB.
     """
     clean = clean_answer(raw_answer)
-    # 1. Try exact match in LIB
     if key in LIB:
         for option_key, legal_clause in LIB[key].items():
-            if option_key in raw_answer: # "Option A" in "**Option A:**..."
+            if option_key in raw_answer: 
                 return legal_clause
-            if clean in legal_clause: # Content match
+            if clean in legal_clause:
                 return legal_clause
-    # 2. Fallback: Return the cleaned text (better than raw option)
     return clean
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
@@ -75,7 +73,6 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
             st.warning(f"👤 **Respondent:**\n\n{r_ans}")
         
         # Determine Default Text
-        # If LIB key provided, try to map the answer to legal text
         if lib_key:
             suggested_text = get_legal_text(lib_key, c_ans)
         else:
@@ -90,7 +87,6 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         return val
 
 # --- 3. CLAUSE LIBRARIES ---
-# Maps "Option" keywords to Full Professional Legal Text
 LIB = {
     "bifurcation": {
         "Option A": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
@@ -140,6 +136,7 @@ t1, t2, t3, t4, t5, t6 = st.tabs(["1. General", "2. Timetable Builder", "3. Evid
 
 ctx = {} # Dictionary for Jinja2
 
+# --- TAB 1: GENERAL & CONSTITUTION ---
 with t1:
     st.header("General & Constitution")
     c1, c2 = st.columns(2)
@@ -149,7 +146,7 @@ with t1:
     ctx['date_of_order'] = str(date.today())
     ctx['governing_law_of_contract'] = st.text_input("Governing Law", "English Law")
     
-    with st.expander("Edit Party & Tribunal Names (Fill this to populate PO1)", expanded=True):
+    with st.expander("Edit Party & Tribunal Names", expanded=True):
         c3, c4 = st.columns(2)
         ctx['claimant_rep_1'] = c3.text_input("Claimant Rep 1", "Ms. Jane Doe")
         ctx['claimant_rep_2'] = c3.text_input("Claimant Rep 2", "")
@@ -174,14 +171,14 @@ with t1:
         default_text="The Tribunal appoints a Secretary with the consent of the Parties.")
     ctx['tribunal_secretary_appointment'] = sec_clause
     
-    # Conditional Fees
     if sec_clause:
         ctx['tribunal_secretary_fees'] = decision_widget("Secretary Fees", "sec_fees", "sec_fees")
     else:
         ctx['tribunal_secretary_fees'] = ""
 
+# --- TAB 2: TIMETABLE ---
 with t2:
-    st.header("📅 Sophisticated Timetable Builder")
+    st.header("📅 Procedural Timetable Configuration")
     st.info("Design the procedural calendar. The table below will be inserted directly into the PO1.")
     
     # A. PRESET GENERATOR
@@ -239,10 +236,11 @@ with t2:
     # Mediation Window Logic
     ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation")
 
+# --- TAB 3: EVIDENCE ---
 with t3:
-    st.header("Evidence")
+    st.header("Evidence & Document Production")
     
-    # Platform Logic (Matches template {{ platform_usage_clause }})
+    # Platform Logic
     plat_choice = claimant.get("platform", "Pending")
     
     PROCEED_PROTOCOL = "The Parties and the Arbitral Tribunal shall use the PROCEED platform for all filings and the procedural calendar."
@@ -266,8 +264,9 @@ with t3:
     ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting")
     ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub")
 
+# --- TAB 4: HEARING ---
 with t4:
-    st.header("Hearing")
+    st.header("Hearing Logistics")
     c_p1_val = c_p1.get('p1_hearing', '')
     ctx['hearing_venue_decision'] = decision_widget("Hearing Venue", "venue", "physical_venue_preference", "venue", help_note=f"Phase 1 Pref: {c_p1_val}")
     
@@ -279,12 +278,13 @@ with t4:
     ctx['demonstratives_decision'] = decision_widget("Demonstratives", "demo", "demonstratives")
     ctx['interpretation_decision'] = decision_widget("Interpretation", "interp", "interpretation")
 
+# --- TAB 5: COSTS ---
 with t5:
     st.header("Costs & Award")
     ctx['cost_allocation_decision'] = decision_widget("Cost Principle", "cost", "cost_allocation", "cost_alloc")
     ctx['counsel_fee_cap_decision'] = decision_widget("Fee Caps", "fees", "counsel_fees")
     
-    # FIXED KEYS TO PREVENT CRASH
+    # FIXED KEYS TO PREVENT DUPLICATES
     ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int_cost", "internal_costs")
     ctx['deposit_structure_decision'] = decision_widget("Deposits", "dep", "deposits")
     
@@ -294,6 +294,7 @@ with t5:
     ctx['signature_format_decision'] = decision_widget("Signature", "sign", "sign_award")
     ctx['publication_decision'] = decision_widget("Publication", "pub", "publication")
 
+# --- TAB 6: MISC ---
 with t6:
     st.header("Misc & Tech")
     ctx['funding_disclosure_clause'] = decision_widget("TPF Disclosure", "fund", "funding")
