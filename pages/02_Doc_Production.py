@@ -99,7 +99,6 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # --- UNIFIED TABLE HEADER ---
-        # Ratio: No(1.5) | Cat(3) | Date(1.5) | Urg(1.5) | Obj(1.5) | Ruling(2)
         cols = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
         headers = ["Req No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -110,14 +109,12 @@ if st.session_state['doc_view_mode'] == 'list':
             c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
             
             # 1. CLICKABLE REQUEST NUMBER
-            # Using the button as the link to the details page
             if c1.button(req.get('req_no', f'#{i+1}'), key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
                 st.rerun()
 
             # 2. CATEGORY
-            # Shorten category for clean display
             cat_full = req.get('category', 'Unknown')
             cat_short = cat_full.split(' ')[1] + " " + cat_full.split(' ')[2] if len(cat_full.split(' ')) > 2 else cat_full
             c2.caption(cat_short)
@@ -222,12 +219,15 @@ elif st.session_state['doc_view_mode'] == 'details':
             det = req.get('determination', {}).get('decision', 'Pending')
             st.info(f"Status: {det}")
             
+            # Logic: Arbitrator edits, Parties VIEW.
             if role == 'arbitrator':
                 if st.button("Issue Decision", use_container_width=True):
                     set_state('form', idx, 'determination')
                     st.rerun()
             else:
-                st.button("View Decision", disabled=True, use_container_width=True)
+                if st.button("View Decision", use_container_width=True):
+                    set_state('form', idx, 'determination')
+                    st.rerun()
 
 
 # --- VIEW 3: INPUT FORMS ---
@@ -244,6 +244,7 @@ elif st.session_state['doc_view_mode'] == 'form':
         st.subheader("📝 Request to Produce Documents")
         is_owner = (role == list_owner)
         
+        # EDIT MODE
         if is_owner:
             with st.form("frm_request"):
                 new_no = st.text_input("Request No.", value=req.get('req_no', ''))
@@ -262,13 +263,13 @@ elif st.session_state['doc_view_mode'] == 'form':
                     st.success("Saved!")
                     set_state('details')
                     st.rerun()
+        # READ-ONLY MODE (DISABLED WIDGETS)
         else:
-            st.info("Read-Only View")
-            st.markdown(f"**Request No:** {req.get('req_no')}")
-            st.markdown(f"**Category:** {req.get('category')}")
-            st.markdown(f"**Urgency:** {req.get('urgency')}")
-            st.markdown(f"**Description:**")
-            st.write(req.get('desc'))
+            st.info("Read-Only: You cannot edit this request.")
+            st.text_input("Request No.", value=req.get('req_no', ''), disabled=True)
+            st.text_input("Category", value=req.get('category', ''), disabled=True)
+            st.text_input("Urgency", value=req.get('urgency', ''), disabled=True)
+            st.text_area("Description & Relevance", value=req.get('desc', ''), height=150, disabled=True)
 
     # --- FORM 2: OBJECTION ---
     elif f_type == 'objection':
@@ -294,9 +295,9 @@ elif st.session_state['doc_view_mode'] == 'form':
                     set_state('details')
                     st.rerun()
         else:
-            st.info("Read-Only View")
-            st.markdown(f"**Objection:** {curr_obj.get('is_objected', 'Pending')}")
-            st.markdown(f"**Grounds:** {curr_obj.get('reason', '-')}")
+            st.info("Read-Only: View Objection Details")
+            st.text_input("Objected?", value=curr_obj.get('is_objected', 'Pending'), disabled=True)
+            st.text_area("Grounds for Objection", value=curr_obj.get('reason', ''), height=150, disabled=True)
 
     # --- FORM 3: REPLY ---
     elif f_type == 'reply':
@@ -324,9 +325,9 @@ elif st.session_state['doc_view_mode'] == 'form':
                     set_state('details')
                     st.rerun()
         else:
-            st.info("Read-Only View")
-            st.markdown(f"**Maintained:** {curr_reply.get('has_replied', '-')}")
-            st.markdown(f"**Arguments:** {curr_reply.get('text', '-')}")
+            st.info("Read-Only: View Reply Details")
+            st.text_input("Request Maintained?", value=curr_reply.get('has_replied', 'Pending'), disabled=True)
+            st.text_area("Reply Arguments", value=curr_reply.get('text', ''), height=150, disabled=True)
 
     # --- FORM 4: TRIBUNAL DECISION ---
     elif f_type == 'determination':
@@ -356,6 +357,8 @@ elif st.session_state['doc_view_mode'] == 'form':
                     set_state('details')
                     st.rerun()
         else:
-            st.info("Read-Only View")
-            st.markdown(f"**Ruling:** {curr_det.get('decision', 'Pending')}")
-            st.markdown(f"**Reasoning:** {curr_det.get('reason', '-')}")
+            # Parties can see this now!
+            st.info("Read-Only: Tribunal Determination")
+            st.text_input("Ruling", value=curr_det.get('decision', 'Pending'), disabled=True)
+            st.text_input("Date of Decision", value=curr_det.get('date', '-'), disabled=True)
+            st.text_area("Tribunal's Reasoning", value=curr_det.get('reason', ''), height=150, disabled=True)
