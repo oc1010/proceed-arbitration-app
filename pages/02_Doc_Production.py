@@ -1,17 +1,16 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 from db import load_complex_data, save_complex_data
-import json
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title="Document Production", layout="wide")
 
-# --- AUTH & SESSION STATE INITIALIZATION ---
-if 'doc_view_mode' not in st.session_state: st.session_state['doc_view_mode'] = 'list' # list, details, form
+# --- AUTH & SESSION STATE ---
+if 'doc_view_mode' not in st.session_state: st.session_state['doc_view_mode'] = 'list' 
 if 'active_req_idx' not in st.session_state: st.session_state['active_req_idx'] = None
-if 'active_party_list' not in st.session_state: st.session_state['active_party_list'] = 'claimant' # claimant or respondent
-if 'active_form_type' not in st.session_state: st.session_state['active_form_type'] = None # request, response, determination
+if 'active_party_list' not in st.session_state: st.session_state['active_party_list'] = 'claimant'
+if 'active_form_type' not in st.session_state: st.session_state['active_form_type'] = None
 
 role = st.session_state.get('user_role')
 if not role:
@@ -33,12 +32,22 @@ with st.sidebar:
 data = load_complex_data()
 doc_prod = data.get("doc_prod", {"claimant": [], "respondent": []})
 
-# --- HELPER FUNCTIONS ---
+# --- CONSTANTS (From Requirements) ---
+CATEGORIES = [
+    "(a) General Contractual Documents",
+    "(b) Technical & Project-Specific",
+    "(c) Financial Documents",
+    "(d) Company and Employee Data",
+    "(e) Electronic Metadata",
+    "(f) Other Documents"
+]
+URGENCY_LEVELS = ["(a) Low", "(b) Medium", "(c) High [Tribunal Priority]"]
+YES_NO_OPTS = ["(a) Yes", "(b) No"]
+DETERMINATION_OPTS = ["Allowed", "Allowed in Part", "Denied", "Reserved"]
 
+# --- HELPER FUNCTIONS ---
 def save_current_data():
-    """Saves the global doc_prod dictionary to the DB"""
     save_complex_data("doc_prod", doc_prod)
-    # st.toast("Changes saved automatically.", icon="💾")
 
 def navigate_to(mode, idx=None, form_type=None):
     st.session_state['doc_view_mode'] = mode
@@ -56,208 +65,250 @@ def get_active_request():
         return lst[idx]
     return {}
 
-# --- VIEW 1: THE DASHBOARD (LIST VIEW) ---
+# --- VIEW 1: DASHBOARD (LIST VIEW) ---
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production Management")
     
-    # 1. Select List (Tab-like behavior using radio or actual tabs)
-    party_tab = st.radio("Select Schedule to View:", ["Claimant's Requests", "Respondent's Requests"], horizontal=True)
-    current_list_key = "claimant" if "Claimant" in party_tab else "respondent"
-    st.session_state['active_party_list'] = current_list_key
+    # 1. TABS for Parties
+    tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
-    request_list = doc_prod[current_list_key]
-
-    # 2. Add New Request Button (Only if you are the owner of this list)
-    if role == current_list_key:
-        with st.expander("➕ Create New Request"):
-            with st.form("new_req_form"):
-                n_desc = st.text_input("Description of Documents")
-                n_cat = st.selectbox("Category", ["Technical", "Financial", "Legal/Contractual", "Internal Comms", "Other"])
-                if st.form_submit_button("Add Request"):
-                    new_req = {
-                        "id": len(request_list) + 1,
-                        "desc": n_desc,
-                        "category": n_cat,
-                        "date": str(date.today()),
-                        "response": {},     # Nested Object for Response
-                        "determination": {} # Nested Object for Ruling
-                    }
-                    doc_prod[current_list_key].append(new_req)
-                    save_current_data()
-                    st.success("Request Created")
-                    st.rerun()
-
-    # 3. Display List Summary
-    if not request_list:
-        st.info("No requests found in this schedule.")
-    else:
-        st.write("### Request List")
-        st.caption("Click 'Manage' to view details, responses, or rulings.")
+    # Logic to set active list based on tab selection is tricky in Streamlit (tabs don't return value).
+    # Instead, we render the content inside the tabs.
+    
+    def render_request_list(party_key):
+        request_list = doc_prod[party_key]
         
-        # We build a custom clean table
-        for i, req in enumerate(request_list):
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([1, 4, 2, 2])
-                c1.write(f"**#{req.get('id', i+1)}**")
-                c1.caption(req.get('category'))
-                c2.write(req.get('desc', 'No Description'))
-                
-                # Status badges
-                has_resp = "✅ Responded" if req.get('response', {}).get('text') else "⏳ Wait for Resp."
-                has_det = "⚖️ Ruled" if req.get('determination', {}).get('decision') else "⏳ Pending"
-                c3.caption(f"{has_resp} | {has_det}")
-                
-                if c4.button("Manage / View", key=f"btn_{current_list_key}_{i}"):
-                    navigate_to('details', i)
+        # New Request Button (Only for Owner)
+        if role == party_key:
+            if st.button(f"➕ New Request ({party_key.title()})", key=f"btn_new_{party_key}"):
+                new_req = {
+                    "req_no": f"Req-{len(request_list)+1}",
+                    "category": CATEGORIES[0],
+                    "date_req": str(date.today()),
+                    "urgency": URGENCY_LEVELS[1],
+                    "desc": "New Request...",
+                    # Sub-objects
+                    "objection": {}, 
+                    "reply": {}, 
+                    "determination": {}
+                }
+                doc_prod[party_key].append(new_req)
+                save_current_data()
+                st.rerun()
 
-# --- VIEW 2: THE "3 CLICKABLE OPTIONS" (HUB) ---
+        if not request_list:
+            st.info("No requests yet.")
+            return
+
+        # Header Row
+        c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 3, 2])
+        c1.markdown("**Req No.**")
+        c2.markdown("**Category**")
+        c3.markdown("**Urgency**")
+        c4.markdown("**Status**")
+        c5.markdown("**Action**")
+        st.divider()
+
+        for i, req in enumerate(request_list):
+            c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 3, 2])
+            
+            # Display Data
+            c1.write(req.get('req_no', '-'))
+            c2.caption(req.get('category', '').split(' ')[0] + "...") # Shorten
+            
+            # Urgency Styling
+            urg = req.get('urgency', '')
+            if "High" in urg: c3.error("High")
+            elif "Medium" in urg: c3.warning("Medium")
+            else: c3.success("Low")
+            
+            # Rich Status Info
+            det = req.get('determination', {}).get('decision')
+            obj = req.get('objection', {}).get('is_objected')
+            
+            if det:
+                c4.info(f"⚖️ **{det}**") # Shows exact ruling
+            elif obj == "(a) Yes":
+                c4.warning("⚠️ Objected")
+            else:
+                c4.caption("⏳ Pending")
+
+            if c5.button("Manage", key=f"mng_{party_key}_{i}"):
+                st.session_state['active_party_list'] = party_key
+                navigate_to('details', i)
+            
+            st.divider()
+
+    with tab_c:
+        render_request_list("claimant")
+    with tab_r:
+        render_request_list("respondent")
+
+
+# --- VIEW 2: THE 4-STAGE HUB ---
 elif st.session_state['doc_view_mode'] == 'details':
     req = get_active_request()
-    idx = st.session_state['active_req_idx'] + 1
+    idx = st.session_state['active_req_idx']
     
     st.button("⬅️ Back to List", on_click=lambda: navigate_to('list'))
     st.divider()
     
-    st.markdown(f"## Request #{idx}")
-    st.markdown(f"**Summary:** {req.get('desc')}")
+    st.subheader(f"Managing: {req.get('req_no', 'Unknown')}")
+    st.caption(f"Category: {req.get('category')}")
     
-    st.write("")
+    # 4 Cards Layout
+    col1, col2, col3, col4 = st.columns(4)
     
-    # THE 3 BIG CLICKABLE CARDS
-    c1, c2, c3 = st.columns(3)
-    
-    # CARD 1: REQUEST
-    with c1:
+    # 1. REQUEST
+    with col1:
         with st.container(border=True):
-            st.markdown("### 📄 Request")
-            st.caption("View full details and justification.")
-            if st.button("Open Request Details", use_container_width=True):
-                navigate_to('form', form_type='request')
+            st.markdown("### 1. Request")
+            st.caption(f"Date: {req.get('date_req')}")
+            if st.button("Edit Request", use_container_width=True):
+                navigate_to('form', idx, 'request')
 
-    # CARD 2: RESPONSE
-    with c2:
+    # 2. OBJECTION (Response)
+    with col2:
         with st.container(border=True):
-            st.markdown("### 🗣️ Response")
-            # Logic: Has it been filled?
-            if req.get('response'):
-                st.success("Response Submitted")
-            else:
-                st.warning("Pending Response")
+            st.markdown("### 2. Objection")
+            obj_status = req.get('objection', {}).get('is_objected', 'Pending')
+            if "Yes" in obj_status: st.error("Objected")
+            elif "No" in obj_status: st.success("No Objection")
+            else: st.info("Pending")
             
-            if st.button("Open Response", use_container_width=True):
-                navigate_to('form', form_type='response')
+            if st.button("File/View Objection", use_container_width=True):
+                navigate_to('form', idx, 'objection')
 
-    # CARD 3: DETERMINATION
-    with c3:
+    # 3. REPLY TO OBJECTION
+    with col3:
         with st.container(border=True):
-            st.markdown("### ⚖️ Determination")
-            if req.get('determination'):
-                st.info(f"Ruling: {req.get('determination', {}).get('decision')}")
-            else:
-                st.caption("No ruling yet.")
-                
-            if st.button("Open Determination", use_container_width=True):
-                navigate_to('form', form_type='determination')
+            st.markdown("### 3. Reply")
+            rep_status = req.get('reply', {}).get('has_replied', 'Pending')
+            if "Yes" in rep_status: st.warning("Reply Filed")
+            else: st.caption("No Reply")
+            
+            if st.button("File/View Reply", use_container_width=True):
+                navigate_to('form', idx, 'reply')
 
-# --- VIEW 3: SPECIFIC DRILL-DOWN FORMS ---
+    # 4. TRIBUNAL DETERMINATION
+    with col4:
+        with st.container(border=True):
+            st.markdown("### 4. Ruling")
+            det = req.get('determination', {}).get('decision', 'Pending')
+            st.info(f"Decision: {det}")
+            
+            if st.button("Issue Determination", use_container_width=True):
+                navigate_to('form', idx, 'determination')
+
+
+# --- VIEW 3: SPECIFIC FORMS ---
 elif st.session_state['doc_view_mode'] == 'form':
     f_type = st.session_state['active_form_type']
     req = get_active_request()
     list_owner = st.session_state['active_party_list'] # 'claimant' or 'respondent'
     
-    st.button("⬅️ Back to Options", on_click=lambda: navigate_to('details'))
+    st.button("⬅️ Back to Request Hub", on_click=lambda: navigate_to('details'))
     st.divider()
 
-    # --- FORM A: REQUEST DETAILS (Editable by Owner Only) ---
+    # --- FORM 1: REQUEST ---
     if f_type == 'request':
-        st.subheader("📄 Request Details")
+        st.subheader("📝 1. Request Details")
+        is_owner = (role == list_owner)
         
-        # Permission: Only the list owner can edit request text
-        is_editable = (role == list_owner)
-        
-        with st.form("req_edit_form"):
-            desc = st.text_area("Description", value=req.get('desc', ''), disabled=not is_editable)
-            cat = st.selectbox("Category", ["Technical", "Financial", "Legal", "Other"], 
-                             index=0, disabled=not is_editable) # Simple index logic for demo
-            relevance = st.text_area("Relevance & Materiality", value=req.get('relevance', ''), disabled=not is_editable)
+        with st.form("frm_request"):
+            # Fields from prompt
+            new_no = st.text_input("Request Number", value=req.get('req_no', ''), disabled=not is_owner)
+            new_cat = st.selectbox("Category of Documents", CATEGORIES, index=CATEGORIES.index(req.get('category')) if req.get('category') in CATEGORIES else 0, disabled=not is_owner)
+            new_date = st.date_input("Date of Request", value=pd.to_datetime(req.get('date_req', date.today())), disabled=not is_owner)
+            new_urg = st.selectbox("Urgency Marker", URGENCY_LEVELS, index=URGENCY_LEVELS.index(req.get('urgency')) if req.get('urgency') in URGENCY_LEVELS else 0, disabled=not is_owner)
+            new_desc = st.text_area("Description / Notes", value=req.get('desc', ''), disabled=not is_owner)
             
-            if is_editable:
-                if st.form_submit_button("💾 Save Changes"):
-                    req['desc'] = desc
-                    req['category'] = cat
-                    req['relevance'] = relevance
+            if is_owner:
+                if st.form_submit_button("Submit Request"):
+                    req.update({
+                        'req_no': new_no, 'category': new_cat, 
+                        'date_req': str(new_date), 'urgency': new_urg, 
+                        'desc': new_desc
+                    })
                     save_current_data()
-                    st.success("Updated.")
+                    st.success("Request Saved!")
             else:
-                st.form_submit_button("Read Only Mode", disabled=True)
+                st.warning("Read-Only Mode")
 
-    # --- FORM B: RESPONSE (Editable by OPPOSING party only) ---
-    elif f_type == 'response':
-        st.subheader("🗣️ Response & Objections")
+    # --- FORM 2: OBJECTION ---
+    elif f_type == 'objection':
+        st.subheader("✋ 2. Objection (Respondent)")
+        # If list is Claimant, Respondent objects. If list is Respondent, Claimant objects.
+        is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
         
-        # Context: Show what we are responding to
-        st.info(f"**Responding to Request:** {req.get('desc')}")
+        curr_obj = req.get('objection', {})
         
-        # Permission: If List Owner is Claimant, Respondent edits. If List Owner is Respondent, Claimant edits.
-        # Arbitrator can always edit? Or Read Only? Usually Arbitrator doesn't write the response.
-        can_edit = False
-        if list_owner == 'claimant' and role == 'respondent': can_edit = True
-        if list_owner == 'respondent' and role == 'claimant': can_edit = True
-        
-        curr_resp = req.get('response', {})
-        
-        with st.form("resp_form"):
-            obj_status = st.selectbox("Objection?", ["No - Will Produce", "Yes - Objecting"], 
-                                      index=1 if curr_resp.get('objection') == "Yes" else 0,
-                                      disabled=not can_edit)
+        with st.form("frm_objection"):
+            is_obj = st.selectbox("Objection?", YES_NO_OPTS, index=YES_NO_OPTS.index(curr_obj.get('is_objected')) if curr_obj.get('is_objected') in YES_NO_OPTS else 1, disabled=not is_opponent)
+            obj_date = st.date_input("Date of Objection", value=pd.to_datetime(curr_obj.get('date', date.today())), disabled=not is_opponent)
+            comments = st.text_area("Reason for Objection", value=curr_obj.get('reason', ''), disabled=not is_opponent)
             
-            resp_text = st.text_area("Objection Reason / Comments", 
-                                     value=curr_resp.get('text', ''), 
-                                     disabled=not can_edit)
-            
-            if can_edit:
-                if st.form_submit_button("Submit Response"):
-                    req['response'] = {
-                        "objection": "Yes" if "Yes" in obj_status else "No",
-                        "text": resp_text,
-                        "date": str(date.today()),
-                        "author": role
+            if is_opponent:
+                if st.form_submit_button("Submit Objection"):
+                    req['objection'] = {
+                        'is_objected': is_obj,
+                        'date': str(obj_date),
+                        'reason': comments
                     }
                     save_current_data()
-                    st.success("Response Recorded.")
-                    navigate_to('details')
+                    st.success("Objection Saved!")
             else:
-                st.warning(f"Only the **{ 'Respondent' if list_owner == 'claimant' else 'Claimant' }** can edit this.")
-                st.form_submit_button("Read Only", disabled=True)
+                st.warning("Read-Only: Only the opposing party can object.")
 
-    # --- FORM C: DETERMINATION (Editable by Arbitrator Only) ---
-    elif f_type == 'determination':
-        st.subheader("⚖️ Tribunal Determination")
+    # --- FORM 3: REPLY ---
+    elif f_type == 'reply':
+        st.subheader("↩️ 3. Reply to Objection (Requesting Party)")
+        is_owner = (role == list_owner)
+        curr_reply = req.get('reply', {})
         
-        # Context
-        c1, c2 = st.columns(2)
-        c1.info(f"**Request:** {req.get('desc')}")
-        resp_data = req.get('response', {})
-        c2.warning(f"**Response:** {resp_data.get('text', 'No response yet')}")
-        
-        curr_det = req.get('determination', {})
-        is_arb = (role == 'arbitrator')
-        
-        with st.form("det_form"):
-            decision = st.selectbox("Decision", ["Allowed", "Allowed in Part", "Denied", "Reserved"], 
-                                  index=0, disabled=not is_arb)
+        st.info(f"Opposing Party Objection: {req.get('objection', {}).get('reason', 'None')}")
+
+        with st.form("frm_reply"):
+            has_reply = st.selectbox("Reply to Objection?", YES_NO_OPTS, index=YES_NO_OPTS.index(curr_reply.get('has_replied')) if curr_reply.get('has_replied') in YES_NO_OPTS else 0, disabled=not is_owner)
+            rep_date = st.date_input("Date of Reply", value=pd.to_datetime(curr_reply.get('date', date.today())), disabled=not is_owner)
+            rep_text = st.text_area("Arguments / Comments", value=curr_reply.get('text', ''), disabled=not is_owner)
             
-            reason = st.text_area("Tribunal's Reasoning", value=curr_det.get('reason', ''), disabled=not is_arb)
+            if is_owner:
+                if st.form_submit_button("Submit Reply"):
+                    req['reply'] = {
+                        'has_replied': has_reply,
+                        'date': str(rep_date),
+                        'text': rep_text
+                    }
+                    save_current_data()
+                    st.success("Reply Saved!")
+            else:
+                st.warning("Read-Only: Only the requesting party can reply.")
+
+    # --- FORM 4: DETERMINATION ---
+    elif f_type == 'determination':
+        st.subheader("⚖️ 4. Tribunal Determination")
+        is_arb = (role == 'arbitrator')
+        curr_det = req.get('determination', {})
+        
+        # Context Display
+        c1, c2 = st.columns(2)
+        c1.warning(f"Objection: {req.get('objection', {}).get('reason', 'N/A')}")
+        c2.info(f"Reply: {req.get('reply', {}).get('text', 'N/A')}")
+        
+        with st.form("frm_determination"):
+            dec = st.selectbox("Determination", DETERMINATION_OPTS, index=DETERMINATION_OPTS.index(curr_det.get('decision')) if curr_det.get('decision') in DETERMINATION_OPTS else 3, disabled=not is_arb)
+            det_date = st.date_input("Date of Determination", value=pd.to_datetime(curr_det.get('date', date.today())), disabled=not is_arb)
+            reason = st.text_area("Tribunal Reasoning", value=curr_det.get('reason', ''), disabled=not is_arb)
             
             if is_arb:
-                if st.form_submit_button("Issue Ruling"):
+                if st.form_submit_button("Submit Determination"):
                     req['determination'] = {
-                        "decision": decision,
-                        "reason": reason,
-                        "date": str(date.today())
+                        'decision': dec,
+                        'date': str(det_date),
+                        'reason': reason
                     }
                     save_current_data()
-                    st.success("Ruling Issued.")
-                    navigate_to('details')
+                    st.success("Determination Issued!")
             else:
-                st.info("Waiting for Tribunal Decision.")
+                st.warning("Read-Only: Only the Tribunal can issue rulings.")
