@@ -77,6 +77,16 @@ def render_read_only_block(label, content, sub_label=None):
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
+    # --- DANGER ZONE: FIX BROKEN DATA ---
+    with st.expander("⚠️ Utility: Clear Data (Use this to fix broken layout)"):
+        st.warning("Clicking below will delete ALL document production requests. Use this if the list looks broken.")
+        if st.button("🗑️ Reset All Requests"):
+            doc_prod["claimant"] = []
+            doc_prod["respondent"] = []
+            save_current_data()
+            st.success("Data wiped. Please create a new request.")
+            st.rerun()
+    
     # Unified Tabs
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
@@ -108,8 +118,7 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        # - Fixed Widths: 
-        # Column 1 is now '1' (wide enough for the button)
+        # - Widened first column to '1' to prevent button collapse
         cols = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
         headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -120,10 +129,9 @@ if st.session_state['doc_view_mode'] == 'list':
             c1, c2, c3, c4, c5, c6 = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
             
             # 1. CLICKABLE REQ NO
-            # Forces "1.", "2." format regardless of DB content
+            # Strict format "1."
             clean_label = f"{i+1}." 
             
-            # We use use_container_width=True to fill the now wider column
             if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
@@ -313,6 +321,7 @@ elif st.session_state['doc_view_mode'] == 'form':
                         set_state('details')
                         st.rerun()
         else:
+            # READ ONLY VIEW
             st.subheader("📄 Request Details")
             c1, c2 = st.columns(2)
             with c1: render_read_only_block("Request No.", clean_num)
