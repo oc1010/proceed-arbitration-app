@@ -24,7 +24,6 @@ with st.sidebar:
     st.divider()
     st.page_link("main.py", label="🏠 Home Dashboard")
     
-    # - Ensuring consistent sidebar across apps
     if role == 'lcia':
         st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
         st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
@@ -98,15 +97,17 @@ def render_read_only_block(label, content, sub_label=None):
 if st.session_state['doc_view_mode'] == 'list':
     st.title("📂 Document Production (Redfern Schedule)")
     
-    # --- DANGER ZONE (Retained for fixing data) ---
-    with st.expander("⚠️ Utility: Clear Data (Use if list is broken)"):
-        if st.button("🗑️ Reset All Requests"):
+    # --- DANGER ZONE: FIX BROKEN DATA ---
+    with st.expander("⚠️ Utility: Reset Data (Click here if list looks broken)"):
+        st.warning("This will delete ALL requests to fix formatting issues.")
+        if st.button("🗑️ Reset All Requests", use_container_width=True):
             doc_prod["claimant"] = []
             doc_prod["respondent"] = []
             save_current_data()
             st.success("Data wiped. Please create a new request.")
             st.rerun()
     
+    # Unified Tabs
     tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
     
     def render_request_list(party_key):
@@ -137,27 +138,31 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        cols = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
-        headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
+        # Column 1 is 1.5 ratio to fit "Req. 1" comfortably
+        cols = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
+        headers = ["Request No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
         st.divider()
 
         # TABLE ROWS
         for i, req in enumerate(request_list):
-            c1, c2, c3, c4, c5, c6 = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
+            c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
             
-            clean_label = f"{i+1}." 
+            # 1. CLICKABLE BUTTON
+            # Using "📂 Req. X" ensures the button is wide enough to render text visible
+            btn_label = f"📂 Req. {i+1}"
             
-            if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
+            if c1.button(btn_label, key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
                 st.rerun()
 
-            # Display logic
+            # 2. DATA
             cat_full = req.get('category', 'Unknown') or "Unknown"
             parts = cat_full.split(' ')
             cat_short = " ".join(parts[1:3]) + "..." if len(parts) > 2 else cat_full
             c2.caption(cat_short)
+            
             c3.write(req.get('date_req', '-'))
             
             urg = req.get('urgency', '')
@@ -165,6 +170,7 @@ if st.session_state['doc_view_mode'] == 'list':
             elif "Medium" in urg: c4.warning("Medium")
             else: c4.success("Low")
             
+            # 3. STATUS
             obj_status = req.get('objection', {}).get('is_objected', 'Pending')
             if "Yes" in obj_status: c5.warning("Yes")
             elif "No" in obj_status: c5.success("No")
@@ -198,7 +204,7 @@ elif st.session_state['doc_view_mode'] == 'details':
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
     
-    req_title = f"{idx+1}."
+    req_title = f"{idx+1}"
     req_desc_short = req.get('desc', 'No description provided')[:100]
     
     st.subheader(f"Managing Request No. {req_title}")
@@ -231,7 +237,6 @@ elif st.session_state['doc_view_mode'] == 'details':
             obj_data = req.get('objection', {})
             
             # Check if this user is the "Opponent" (The one who should object)
-            # If list is 'claimant', then 'respondent' is the opponent.
             is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
             
             if obj_data:
@@ -251,7 +256,6 @@ elif st.session_state['doc_view_mode'] == 'details':
                         set_state('form', idx, 'objection')
                         st.rerun()
                 else:
-                    # Owner (or Arbitrator) cannot file objection to their own list
                     if role == list_owner:
                         st.info("Waiting for Opposition")
                     st.button("File Objection", key="btn_file_obj_dis", disabled=True, use_container_width=True)
@@ -323,7 +327,7 @@ elif st.session_state['doc_view_mode'] == 'form':
     if f_type == 'request':
         is_owner = (role == list_owner)
         has_obj = req.get('objection', {}).get('date') 
-        clean_num = f"{st.session_state['active_req_idx']+1}."
+        clean_num = f"{st.session_state['active_req_idx']+1}"
 
         if is_owner and not has_obj:
             st.subheader("📝 Edit Request")
