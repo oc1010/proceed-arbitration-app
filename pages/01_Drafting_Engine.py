@@ -25,7 +25,6 @@ c_p1 = p1.get('claimant', {})
 def clean_answer(raw_text):
     """
     Strips '**Option X:**' and markdown to find the core meaning.
-    Example: "**Option A:** Single Phase." -> "Single Phase"
     """
     if not raw_text or raw_text == "Pending": return ""
     text = raw_text.replace("**", "")
@@ -153,16 +152,16 @@ with t1:
         ctx['respondent_rep_1'] = c4.text_input("Respondent Rep 1", "Mr. John Smith")
         ctx['respondent_rep_2'] = c4.text_input("Respondent Rep 2", "")
         
-        # Hidden Address Fields (Populated with defaults to prevent blank lines)
+        # Hidden Address Fields (Populated with defaults to prevent blank lines in Word)
         ctx['Contact_details_of_Claimant'] = "Claimant Address"
         ctx['Contact_details_of_Respondent'] = "Respondent Address"
         ctx['Contact_details_of_Claimant_Representative'] = "counsel@claimant.com"
         ctx['Contact_details_of_Respondent_Representative'] = "counsel@respondent.com"
         
-        t1, t2, t3 = st.columns(3)
-        ctx['Contact_details_of_Arbitrator_1'] = t1.text_input("Co-Arb 1", "Dr. A")
-        ctx['Contact_details_of_Arbitrator_2'] = t2.text_input("Co-Arb 2", "Ms. B")
-        ctx['Contact_details_of_Arbitrator_3_Presiding'] = t3.text_input("Presiding", "Prof. C")
+        t1_col, t2_col, t3_col = st.columns(3)
+        ctx['Contact_details_of_Arbitrator_1'] = t1_col.text_input("Co-Arb 1", "Dr. A")
+        ctx['Contact_details_of_Arbitrator_2'] = t2_col.text_input("Co-Arb 2", "Ms. B")
+        ctx['Contact_details_of_Arbitrator_3_Presiding'] = t3_col.text_input("Presiding", "Prof. C")
 
     ctx['bifurcation_decision'] = decision_widget("Bifurcation", "bif", "bifurcation", "bifurcation")
     ctx['consolidation_decision'] = decision_widget("Consolidation", "con", "consolidation", "consolidation")
@@ -260,7 +259,7 @@ with t3:
     ctx['privilege_logs_decision'] = decision_widget("Privilege Logs", "logs", "privilege_logs")
     
     st.subheader("Witnesses & Experts")
-    ctx['witness_exam_rule'] = decision_widget("Witness Exam Scope", "wit", "witness_exam")
+    ctx['witness_exam_scope_decision'] = decision_widget("Witness Exam Scope", "wit", "witness_exam")
     ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting")
     ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub")
 
