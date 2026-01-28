@@ -87,7 +87,7 @@ if st.session_state['doc_view_mode'] == 'list':
         if role == party_key:
             if st.button(f"➕ Create New Request ({party_key.title()})", key=f"btn_new_{party_key}"):
                 new_idx = len(request_list)
-                # - Simplified numbering "1.", "2."
+                # STRICT FORMAT: "1.", "2.", "3."
                 new_req = {
                     "req_no": f"{new_idx + 1}.", 
                     "category": CATEGORIES[0],
@@ -109,20 +109,22 @@ if st.session_state['doc_view_mode'] == 'list':
             return
 
         # TABLE HEADER
-        cols = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
-        headers = ["Req No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
+        # [0.5] width for the small number
+        cols = st.columns([0.5, 3, 1.5, 1.5, 1.5, 2])
+        headers = ["No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
         for c, h in zip(cols, headers): c.markdown(f"**{h}**")
         st.divider()
 
         # TABLE ROWS
         for i, req in enumerate(request_list):
-            c1, c2, c3, c4, c5, c6 = st.columns([1, 3, 1.5, 1.5, 1.5, 2])
+            c1, c2, c3, c4, c5, c6 = st.columns([0.5, 3, 1.5, 1.5, 1.5, 2])
             
             # 1. CLICKABLE REQ NO
-            # Enforce simple "1." format display
-            label = req.get('req_no', f"{i+1}.")
+            # FORCE SEQUENTIAL NUMBERING based on INDEX (i+1)
+            # This ensures it is always 1., 2., 3. regardless of data messiness
+            clean_label = f"{i+1}."
             
-            if c1.button(label, key=f"nav_{party_key}_{i}", use_container_width=True):
+            if c1.button(clean_label, key=f"nav_{party_key}_{i}", use_container_width=True):
                 st.session_state['active_party_list'] = party_key
                 set_state('details', i)
                 st.rerun()
@@ -171,10 +173,11 @@ elif st.session_state['doc_view_mode'] == 'details':
     st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
     st.divider()
     
-    req_title = req.get('req_no', f'{idx+1}.')
+    # Force clean numbering in title
+    req_title = f"{idx+1}."
     req_desc_short = req.get('desc', 'No description provided')[:100]
     
-    st.subheader(f"Managing: {req_title}")
+    st.subheader(f"Managing Request {req_title}")
     st.caption(f"Context: {req_desc_short}...")
     
     col1, col2, col3, col4 = st.columns(4)
@@ -267,11 +270,14 @@ elif st.session_state['doc_view_mode'] == 'form':
         is_owner = (role == list_owner)
         has_obj = req.get('objection', {}).get('date') 
         
+        # Calculate clean number
+        clean_num = f"{st.session_state['active_req_idx']+1}."
+
         if is_owner and not has_obj:
             st.subheader("📝 Edit Request")
             with st.form("frm_request"):
-                # - Simple numbering logic
-                new_no = st.text_input("Request No.", value=req.get('req_no', f"{st.session_state['active_req_idx']+1}."))
+                # Force clean numbering in the form
+                new_no = st.text_input("Request No.", value=req.get('req_no', clean_num))
                 new_cat = st.selectbox("Category", CATEGORIES, index=CATEGORIES.index(req.get('category')) if req.get('category') in CATEGORIES else 0)
                 new_date = st.date_input("Date", value=pd.to_datetime(req.get('date_req', date.today())))
                 new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=URGENCY_LEVELS.index(req.get('urgency')) if req.get('urgency') in URGENCY_LEVELS else 0)
@@ -293,7 +299,7 @@ elif st.session_state['doc_view_mode'] == 'form':
         else:
             st.subheader("📄 Request Details")
             c1, c2 = st.columns(2)
-            with c1: render_read_only_block("Request No.", req.get('req_no'))
+            with c1: render_read_only_block("Request No.", req.get('req_no', clean_num))
             with c2: render_read_only_block("Date", req.get('date_req'))
             c3, c4 = st.columns(2)
             with c3: render_read_only_block("Category", req.get('category'))
