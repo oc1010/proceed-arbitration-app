@@ -37,10 +37,8 @@ def update_clause_text(var_name, lib_key):
     radio_key = f"rad_{var_name}"
     text_key = f"in_{var_name}"
     
-    # Get the selected label
     if radio_key in st.session_state:
         selected_label = st.session_state[radio_key]
-        # Fetch full text
         if lib_key in LIB and selected_label in LIB[lib_key]:
             new_text = LIB[lib_key][selected_label]
             st.session_state[text_key] = new_text
@@ -56,7 +54,7 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         
         if not is_included:
             st.divider()
-            return "" # Returns empty string if unchecked
+            return "" 
 
         c_ans = claimant.get(key_in_db, "Pending")
         r_ans = respondent.get(key_in_db, "Pending")
@@ -68,16 +66,14 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
             st.warning(f"👤 **Respondent:**\n\n{clean_answer(r_ans)}")
         
         with cols[2]:
-            # Selection Logic
             if lib_key and lib_key in LIB:
                 options_dict = LIB[lib_key]
                 options_list = list(options_dict.keys())
                 
                 # Cleanup Stale State
                 radio_key = f"rad_{var_name}"
-                if radio_key in st.session_state:
-                    if st.session_state[radio_key] not in options_list:
-                        del st.session_state[radio_key]
+                if radio_key in st.session_state and st.session_state[radio_key] not in options_list:
+                    del st.session_state[radio_key]
 
                 # Determine Default
                 default_idx = 0
@@ -98,7 +94,6 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
                     args=(var_name, lib_key)
                 )
                 
-                # Initialize text area
                 text_key = f"in_{var_name}"
                 if text_key not in st.session_state:
                     current_radio = st.session_state.get(radio_key, options_list[default_idx])
@@ -107,18 +102,14 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
             elif f"in_{var_name}" not in st.session_state:
                 st.session_state[f"in_{var_name}"] = default_text if default_text else clean_answer(c_ans)
 
-            final_val = st.text_area(
-                "Final Clause Content", 
-                key=f"in_{var_name}",
-                height=100
-            )
+            final_val = st.text_area("Final Clause Content", key=f"in_{var_name}", height=100)
         
         st.divider()
         return final_val
 
-# --- 3. CLAUSE LIBRARIES (Full, Professional Sentences) ---
+# --- 3. CLAUSE LIBRARIES ---
 LIB = {
-    # --- GENERAL ---
+    # GENERAL
     "bifurcation": {
         "Option A (Single)": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
         "Option B (Bifurcated)": "Pursuant to LCIA Article 22.1(vii), the proceedings are bifurcated. Phase 1 shall address Liability only."
@@ -139,8 +130,7 @@ LIB = {
         "Option A (Window)": "The procedural timetable includes a specific window for mediation stay, should the Parties agree to utilise it.",
         "Option B (No Window)": "No specific stay for mediation is included, though the Parties may agree to mediate at any time."
     },
-
-    # --- SUBMISSIONS ---
+    # SUBMISSIONS
     "style": {
         "Option A (Memorial)": "The Parties shall submit written submissions in the Memorial Style, involving the simultaneous exchange of evidence with pleadings.",
         "Option B (Pleading)": "The Parties shall submit written submissions in the Pleading Style, where evidence is exchanged only after the disclosure phase."
@@ -158,8 +148,7 @@ LIB = {
         "Option A (Merits)": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
         "Option B (Final Filing)": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
     },
-    
-    # --- EVIDENCE ---
+    # EVIDENCE
     "doc_prod": {
         "Option A (IBA Bound)": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
         "Option B (IBA Guided)": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
@@ -190,8 +179,7 @@ LIB = {
         "Option A (Sequential)": "Experts shall be examined sequentially, one after the other.",
         "Option B (Concurrent)": "Experts shall be examined concurrently ('hot-tubbing') on an issue-by-issue basis."
     },
-    
-    # --- HEARING ---
+    # HEARING
     "venue": {
         "At Seat": "The Oral Hearing shall be held physically at the Seat of Arbitration.",
         "Neutral Venue": "The Oral Hearing shall be held physically at a neutral venue (IDRC London).",
@@ -213,8 +201,7 @@ LIB = {
         "Option A (English Only)": "The proceedings will be conducted entirely in English; no interpretation is anticipated.",
         "Option B (Required)": "Interpretation services shall be arranged for witnesses testifying in other languages."
     },
-    
-    # --- COSTS & AWARD ---
+    # COSTS & AWARD
     "cost_alloc": {
         "Option A (Loser Pays)": "Costs shall be allocated on the principle that 'costs follow the event' (the loser pays).",
         "Option B (Apportioned)": "Costs shall be apportioned reflecting the relative success of the Parties on individual issues."
@@ -247,8 +234,7 @@ LIB = {
         "Option A (Confidential)": "The award shall remain confidential and shall not be published.",
         "Option B (Redacted)": "The award may be published in redacted form."
     },
-    
-    # --- MISC ---
+    # MISC
     "funding": {
         "Option A (None)": "The Parties confirm that no third-party funding is currently in place.",
         "Option B (Disclose)": "The existence and identity of any third-party funder must be disclosed immediately."
@@ -284,7 +270,6 @@ t1, t2, t3, t4, t5, t6 = st.tabs(["1. General", "2. Timetable", "3. Evidence", "
 
 ctx = {} 
 
-# --- TAB 1: GENERAL ---
 with t1:
     st.header("General & Constitution")
     c1, c2 = st.columns(2)
@@ -322,7 +307,6 @@ with t1:
     else:
         ctx['tribunal_secretary_fees'] = ""
 
-# --- TAB 2: TIMETABLE ---
 with t2:
     st.header("📅 Procedural Timetable")
     st.info("Configure the steps below. The app will generate a formal table.")
@@ -368,22 +352,32 @@ with t2:
         }
     )
     
-    # Generate List for Word Table
+    # 1. Generate List for New Template (Final)
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
         timetable_rows.append({
             "step": row['Step'],
             "date": d_str,
-            "party": row['Responsible Party'],       
-            "action": row['Procedural requirements'], 
+            "party": row['Responsible Party'],
+            "action": row['Procedural requirements'],
             "notes": row['Notes']
         })
     ctx['timetable_rows'] = timetable_rows
     
+    # 2. Generate Text Block for Old Template (Fallback)
+    table_text = ""
+    for r in timetable_rows:
+        table_text += f"{r['step']}. {r['date']} | {r['party']}: {r['action']} ({r['notes']})\n"
+    ctx['procedural_timetable_table'] = table_text
+
+    # 3. Generate Individual Vars for Oldest Template (Fallback)
+    for i, r in enumerate(timetable_rows):
+        if i < 15:
+            ctx[f'deadline_{i+1:02d}'] = r['date']
+
     ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation", "mediation")
 
-# --- TAB 3: EVIDENCE ---
 with t3:
     st.header("Evidence")
     
@@ -403,7 +397,6 @@ with t3:
     ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting", "expert_meeting")
     ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub", "expert_hot_tub")
 
-# --- TAB 4: HEARING ---
 with t4:
     st.header("Hearing Logistics")
     c_p1_val = c_p1.get('p1_hearing', '')
@@ -428,7 +421,6 @@ with t4:
     ctx['demonstratives_decision'] = decision_widget("Demonstratives", "demo", "demonstratives", "demonstratives")
     ctx['interpretation_decision'] = decision_widget("Interpretation", "interp", "interpretation", "interpretation")
 
-# --- TAB 5: COSTS ---
 with t5:
     st.header("Costs & Award")
     ctx['cost_allocation_decision'] = decision_widget("Cost Principle", "cost", "cost_allocation", "cost_alloc")
@@ -442,7 +434,6 @@ with t5:
     ctx['signature_format_decision'] = decision_widget("Signature", "sign", "sign_award", "sign_award")
     ctx['publication_decision'] = decision_widget("Publication", "pub", "publication", "publication")
 
-# --- TAB 6: MISC ---
 with t6:
     st.header("Misc & Logistics")
     ctx['funding_disclosure_clause'] = decision_widget("TPF Disclosure", "fund", "funding", "funding")
@@ -473,38 +464,33 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
-        # SAFETY NET: Fill missing keys with placeholders
-        for key in [
-            'claimant_rep_1', 'claimant_rep_2', 
-            'respondent_rep_1', 'respondent_rep_2', 
-            'bifurcation_decision', 'consolidation_decision',
-            'tribunal_secretary_appointment', 'tribunal_secretary_fees',
-            'platform_usage_clause', 'mediation_window_clause',
-            'cost_allocation_decision', 'counsel_fee_cap_decision',
-            'internal_costs_decision', 'deposit_structure_decision',
-            'award_currency_decision', 'interest_decision',
-            'signature_format_decision', 'publication_decision',
-            'evidence_rules_decision', 'doc_prod_limits_decision',
-            'hearing_venue_decision', 'chess_clock_decision',
-            'transcription_decision', 'deadline_timezone',
-            'time_abbreviations', 'time_confirm_contact',
-            'time_notify_counsel', 'time_shred_docs',
-            'time_produce_docs', 'max_filename_len',
-            'time_hearing_bundle', 'time_submit_exhibits',
-            'hearing_hours', 'ai_guidelines_clause',
-            'green_protocols_clause', 'disability_clause',
-            'gdpr_clause'
-        ]:
+        # SAFETY NET: Fill missing keys with default empty strings
+        # This prevents the "UndefinedVariable" crash if a user skipped a tab
+        default_keys = [
+            'claimant_rep_1', 'claimant_rep_2', 'respondent_rep_1', 'respondent_rep_2',
+            'bifurcation_decision', 'consolidation_decision', 'tribunal_secretary_appointment',
+            'tribunal_secretary_fees', 'platform_usage_clause', 'mediation_window_clause',
+            'cost_allocation_decision', 'counsel_fee_cap_decision', 'internal_costs_decision',
+            'deposit_structure_decision', 'award_currency_decision', 'interest_decision',
+            'signature_format_decision', 'publication_decision', 'evidence_rules_decision',
+            'doc_prod_limits_decision', 'hearing_venue_decision', 'chess_clock_decision',
+            'transcription_decision', 'deadline_timezone', 'time_abbreviations', 
+            'time_confirm_contact', 'time_notify_counsel', 'time_shred_docs', 
+            'time_produce_docs', 'max_filename_len', 'time_hearing_bundle', 
+            'time_submit_exhibits', 'hearing_hours', 'ai_guidelines_clause',
+            'green_protocols_clause', 'disability_clause', 'gdpr_clause'
+        ]
+        for key in default_keys:
             if key not in ctx or ctx[key] is None:
-                ctx[key] = "" # Default to empty string instead of crashing
+                ctx[key] = "[Not Selected]" # Or "" if you prefer blank
 
         try:
-            # Look for the FINAL file
+            # TRY FINAL -> READY -> ORIGINAL
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
                 target_file = "template_po1_READY.docx"
                 if not os.path.exists(target_file):
-                    target_file = "template_po1.docx" # Fallback
+                    target_file = "template_po1.docx"
 
             doc = DocxTemplate(target_file)
             doc.render(ctx)
