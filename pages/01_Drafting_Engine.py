@@ -238,7 +238,6 @@ LIB = {
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
-# --- INITIALIZE TABLE with requested Columns ---
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
         {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
@@ -328,7 +327,7 @@ with t2:
     )
     
     # --- DYNAMIC TABLE POPULATION ---
-    # This matches the new Dynamic Template we created
+    # This list is what the SMART template expects
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
@@ -440,26 +439,31 @@ with c_gen:
                 ctx[key] = "[Not Selected]"
 
         try:
-            # FORCE USAGE OF DYNAMIC TEMPLATE
-            target_file = "template_po1_DYNAMIC.docx"
+            # ONLY use the Smart Template (prevents using old broken ones)
+            target_file = "template_po1_SMART.docx"
             
             if not os.path.exists(target_file):
-                st.error(f"❌ Critical Error: '{target_file}' not found! You MUST run 'create_dynamic_template.py' locally and upload the file to GitHub.")
-            else:
-                doc = DocxTemplate(target_file)
-                doc.render(ctx)
-                
-                buf = BytesIO()
-                doc.save(buf)
-                buf.seek(0)
-                
-                st.download_button(
-                    label="📥 Download PO1", 
-                    data=buf, 
-                    file_name="Procedural_Order_1.docx", 
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                st.success(f"Draft Generated using {target_file}!")
+                # Fallback check
+                if os.path.exists("template_po1_FINAL.docx"):
+                    target_file = "template_po1_FINAL.docx"
+                else:
+                    st.error(f"❌ Error: 'template_po1_SMART.docx' not found. Please run the fixer script locally and upload it.")
+                    st.stop()
+
+            doc = DocxTemplate(target_file)
+            doc.render(ctx)
+            
+            buf = BytesIO()
+            doc.save(buf)
+            buf.seek(0)
+            
+            st.download_button(
+                label=f"📥 Download PO1 (Using {target_file})", 
+                data=buf, 
+                file_name="Procedural_Order_1.docx", 
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            st.success("Draft Generated Successfully!")
                 
         except Exception as e:
             st.error("An error occurred during generation:")
