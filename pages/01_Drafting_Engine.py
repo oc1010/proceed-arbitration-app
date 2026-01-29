@@ -47,7 +47,6 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         c_top, c_chk = st.columns([4, 1])
         c_top.markdown(f"**{label}**")
         is_included = c_chk.checkbox("Include?", value=True, key=f"chk_{var_name}")
-        
         if not is_included:
             st.divider()
             return "" 
@@ -66,15 +65,12 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
                 options_dict = LIB[lib_key]
                 options_list = list(options_dict.keys())
                 radio_key = f"rad_{var_name}"
-                
-                # Determine Default
                 default_idx = 0
                 if radio_key not in st.session_state:
                     for i, k in enumerate(options_list):
                         if k.split("(")[0].strip() in c_ans:
                             default_idx = i
                             break
-                
                 st.radio(
                     "Select Variation:",
                     options_list,
@@ -85,21 +81,17 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
                     on_change=update_clause_text,
                     args=(var_name, lib_key)
                 )
-                
                 text_key = f"in_{var_name}"
                 if text_key not in st.session_state:
                     current_radio = st.session_state.get(radio_key, options_list[default_idx])
                     st.session_state[text_key] = options_dict[current_radio]
-
             elif f"in_{var_name}" not in st.session_state:
                 st.session_state[f"in_{var_name}"] = default_text if default_text else clean_answer(c_ans)
-
             final_val = st.text_area("Final Clause Content", key=f"in_{var_name}", height=100)
-        
         st.divider()
         return final_val
 
-# --- 3. CLAUSE LIBRARY (Full) ---
+# --- 3. CLAUSE LIBRARY ---
 LIB = {
     "bifurcation": {
         "Option A (Single)": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
@@ -285,10 +277,8 @@ with t1:
 
     ctx['bifurcation_decision'] = decision_widget("Bifurcation", "bif", "bifurcation", "bifurcation")
     ctx['consolidation_decision'] = decision_widget("Consolidation", "con", "consolidation", "consolidation")
-    
     sec_clause = decision_widget("Secretary Appointment", "sec", "secretary", "secretary")
     ctx['tribunal_secretary_appointment'] = sec_clause
-    
     if sec_clause and "No Tribunal Secretary" not in sec_clause:
         ctx['tribunal_secretary_fees'] = decision_widget("Secretary Fees", "sec_fees", "sec_fees", "sec_fees")
     else:
@@ -297,10 +287,8 @@ with t1:
 with t2:
     st.header("📅 Procedural Timetable")
     st.info("Configure the steps below. Rows will automatically expand in the generated document.")
-    
     col_preset, col_act = st.columns([3, 1])
     preset = col_preset.radio("Load Preset Template:", ["Memorial Style (Front Loaded)", "Pleading Style (Sequential)"], horizontal=True)
-    
     if col_act.button("🔄 Apply Preset"):
         base = date.today()
         if "Memorial" in preset:
@@ -340,8 +328,7 @@ with t2:
     )
     
     # --- DYNAMIC TABLE POPULATION ---
-    # We create a list of dicts. The Word template (template_po1_FIXED.docx)
-    # uses {% for r in timetable_rows %} ... {% endfor %} to loop this list.
+    # This matches the new Dynamic Template we created
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
@@ -429,7 +416,7 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
-        # SAFETY NET
+        # SAFETY NET: Fill missing keys with placeholders
         default_keys = [
             'claimant_rep_1', 'claimant_rep_2', 'respondent_rep_1', 'respondent_rep_2',
             'bifurcation_decision', 'consolidation_decision', 'tribunal_secretary_appointment',
@@ -453,9 +440,11 @@ with c_gen:
                 ctx[key] = "[Not Selected]"
 
         try:
-            target_file = "template_po1_FIXED.docx"
+            # FORCE USAGE OF DYNAMIC TEMPLATE
+            target_file = "template_po1_DYNAMIC.docx"
+            
             if not os.path.exists(target_file):
-                st.error("❌ Template file missing! Upload 'template_po1_FIXED.docx' to GitHub.")
+                st.error(f"❌ Critical Error: '{target_file}' not found! You MUST run 'create_dynamic_template.py' locally and upload the file to GitHub.")
             else:
                 doc = DocxTemplate(target_file)
                 doc.render(ctx)
