@@ -1,5 +1,5 @@
 import streamlit as st
-from docxtpl import DocxTemplate, RichText
+from docxtpl import DocxTemplate
 from docx.shared import Inches, Pt
 from io import BytesIO
 from datetime import date, timedelta
@@ -26,12 +26,21 @@ c_p1 = p1.get('claimant', {})
 # --- 2. LOGIC HELPERS ---
 def clean_answer(raw_text):
     if not raw_text or raw_text == "Pending": return "Pending"
-    text = raw_text.replace("**", "").replace("*", "")
+    text = str(raw_text).replace("**", "").replace("*", "")
     if "Option " in text and ":" in text:
         parts = text.split(":", 1)
         if len(parts) > 1:
             return parts[1].strip()
     return text.strip()
+
+def safe_str(val):
+    """Prevents 'None' or 'nan' from appearing in the document."""
+    if val is None:
+        return ""
+    s_val = str(val).strip()
+    if s_val.lower() in ['none', 'nan', 'nat']:
+        return ""
+    return s_val
 
 def update_clause_text(var_name, lib_key):
     radio_key = f"rad_{var_name}"
@@ -326,52 +335,6 @@ with t2:
         }
     )
     
-    # --- SUBDOC TABLE GENERATION (The Fix) ---
-    # We generate the table object purely in Python code, ensuring perfect formatting.
-    # This avoids Jinja2 loop syntax entirely inside the Word file.
-    
-    # We need a dummy doc to create the Subdoc
-    temp_doc = DocxTemplate("template_po1_SUBDOC.docx") 
-    sd = temp_doc.new_subdoc()
-    
-    # Create the table in the Subdoc
-    table = sd.add_table(rows=1, cols=5)
-    table.style = 'Table Grid'
-    table.autofit = False
-    
-    # Set fixed column widths (in Inches) for professional look
-    widths = [0.5, 1.2, 1.2, 2.0, 1.6] # Total ~6.5 inches
-    
-    # Header Row
-    hdr_cells = table.rows[0].cells
-    headers = ["Step", "Date", "Responsible Party", "Procedural Requirements", "Notes"]
-    for i, text in enumerate(headers):
-        hdr_cells[i].text = text
-        hdr_cells[i].width = Inches(widths[i])
-        # Make bold (simplest way in subdoc)
-        for p in hdr_cells[i].paragraphs:
-            for r in p.runs:
-                r.bold = True
-    
-    # Data Rows
-    for _, row in edited_df.iterrows():
-        d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
-        
-        # Add new row
-        new_row = table.add_row().cells
-        new_row[0].text = str(row['Step'])
-        new_row[1].text = d_str
-        new_row[2].text = row['Responsible Party']
-        new_row[3].text = row['Procedural Requirements']
-        new_row[4].text = row['Notes']
-        
-        # Apply Widths to new row cells
-        for i, width in enumerate(widths):
-            new_row[i].width = Inches(width)
-
-    # Pass the subdoc to the context
-    ctx['dynamic_table'] = sd
-
     ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation", "mediation")
 
 with t3:
@@ -447,7 +410,7 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
-        # SAFETY NET: Fill missing keys with placeholders
+        # SAFETY NET
         default_keys = [
             'claimant_rep_1', 'claimant_rep_2', 'respondent_rep_1', 'respondent_rep_2',
             'bifurcation_decision', 'consolidation_decision', 'tribunal_secretary_appointment',
@@ -472,11 +435,65 @@ with c_gen:
 
         try:
             target_file = "template_po1_SUBDOC.docx"
-            
             if not os.path.exists(target_file):
-                st.error(f"❌ Critical Error: '{target_file}' not found! You MUST run 'setup_subdoc_template.py' locally and upload the file to GitHub.")
+                st.error("❌ Critical Error: 'template_po1_SUBDOC.docx' not found! Make sure to upload it to GitHub.")
             else:
                 doc = DocxTemplate(target_file)
+                
+                # --- SUBDOC TABLE GENERATION (Robust & Clean) ---
+                sd = doc.new_subdoc()
+                
+                # Create table with fixed dimensions
+                table = sd.add_table(rows=1, cols=5)
+                table.style = 'Table Grid'
+                table.autofit = False
+                
+                # Column Widths (Inches) - Total approx 6.5
+                # Step, Date, Party, Action, Notes
+                widths = [0.5, 1.2, 1.2, 2.0, 1.6]
+                
+                # HEADERS
+                hdr_cells = table.rows[0].cells
+                headers = ["Step", "Date", "Responsible Party", "Procedural Requirements", "Notes"]
+                for i, text in enumerate(headers):
+                    hdr_cells[i].text = text
+                    hdr_cells[i].width = Inches(widths[i])
+                    # Make Bold
+                    for p in hdr_cells[i].paragraphs:
+                        for r in p.runs:
+                            r.bold = True
+                            r.font.size = Pt(10)
+
+                # DATA ROWS
+                # enumerate(edited_df.iterrows()) gives i, (index, row)
+                for i, (index, row) in enumerate(edited_df.iterrows()):
+                    # Auto-number step (i+1)
+                    step_num = str(i + 1)
+                    
+                    # Handle Date
+                    if isinstance(row['Date'], date):
+                        d_str = row['Date'].strftime("%d %B %Y")
+                    else:
+                        d_str = safe_str(row['Date'])
+
+                    # Add new row
+                    new_row = table.add_row().cells
+                    new_row[0].text = step_num
+                    new_row[1].text = d_str
+                    new_row[2].text = safe_str(row['Responsible Party'])
+                    new_row[3].text = safe_str(row['Procedural Requirements'])
+                    new_row[4].text = safe_str(row['Notes'])
+                    
+                    # Apply Formatting
+                    for j, width in enumerate(widths):
+                        new_row[j].width = Inches(width)
+                        for p in new_row[j].paragraphs:
+                            for r in p.runs:
+                                r.font.size = Pt(10)
+
+                # Add subdoc to context
+                ctx['dynamic_table'] = sd
+
                 doc.render(ctx)
                 
                 buf = BytesIO()
@@ -489,7 +506,7 @@ with c_gen:
                     file_name="Procedural_Order_1.docx", 
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
-                st.success(f"Draft Generated using {target_file}!")
+                st.success(f"Draft Generated Successfully!")
                 
         except Exception as e:
             st.error("An error occurred during generation:")
