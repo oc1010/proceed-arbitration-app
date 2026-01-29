@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pandas as pd
 from db import load_responses, save_complex_data
 import os
+import traceback
 
 st.set_page_config(page_title="Drafting Engine", layout="wide")
 
@@ -44,9 +45,7 @@ def update_clause_text(var_name, lib_key):
             st.session_state[text_key] = new_text
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
-    """
-    Advanced Widget: Toggle options -> Instantly update text.
-    """
+    """Advanced Widget: Toggle options -> Instantly update text."""
     with st.container():
         c_top, c_chk = st.columns([4, 1])
         c_top.markdown(f"**{label}**")
@@ -70,12 +69,9 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
                 options_dict = LIB[lib_key]
                 options_list = list(options_dict.keys())
                 
-                # Cleanup Stale State
                 radio_key = f"rad_{var_name}"
-                if radio_key in st.session_state and st.session_state[radio_key] not in options_list:
-                    del st.session_state[radio_key]
-
-                # Determine Default
+                
+                # Default selection logic
                 default_idx = 0
                 if radio_key not in st.session_state:
                     for i, k in enumerate(options_list):
@@ -109,7 +105,6 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
 
 # --- 3. CLAUSE LIBRARIES ---
 LIB = {
-    # GENERAL
     "bifurcation": {
         "Option A (Single)": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
         "Option B (Bifurcated)": "Pursuant to LCIA Article 22.1(vii), the proceedings are bifurcated. Phase 1 shall address Liability only."
@@ -130,7 +125,6 @@ LIB = {
         "Option A (Window)": "The procedural timetable includes a specific window for mediation stay, should the Parties agree to utilise it.",
         "Option B (No Window)": "No specific stay for mediation is included, though the Parties may agree to mediate at any time."
     },
-    # SUBMISSIONS
     "style": {
         "Option A (Memorial)": "The Parties shall submit written submissions in the Memorial Style, involving the simultaneous exchange of evidence with pleadings.",
         "Option B (Pleading)": "The Parties shall submit written submissions in the Pleading Style, where evidence is exchanged only after the disclosure phase."
@@ -148,7 +142,6 @@ LIB = {
         "Option A (Merits)": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
         "Option B (Final Filing)": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
     },
-    # EVIDENCE
     "doc_prod": {
         "Option A (IBA Bound)": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
         "Option B (IBA Guided)": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
@@ -179,7 +172,6 @@ LIB = {
         "Option A (Sequential)": "Experts shall be examined sequentially, one after the other.",
         "Option B (Concurrent)": "Experts shall be examined concurrently ('hot-tubbing') on an issue-by-issue basis."
     },
-    # HEARING
     "venue": {
         "At Seat": "The Oral Hearing shall be held physically at the Seat of Arbitration.",
         "Neutral Venue": "The Oral Hearing shall be held physically at a neutral venue (IDRC London).",
@@ -201,7 +193,6 @@ LIB = {
         "Option A (English Only)": "The proceedings will be conducted entirely in English; no interpretation is anticipated.",
         "Option B (Required)": "Interpretation services shall be arranged for witnesses testifying in other languages."
     },
-    # COSTS & AWARD
     "cost_alloc": {
         "Option A (Loser Pays)": "Costs shall be allocated on the principle that 'costs follow the event' (the loser pays).",
         "Option B (Apportioned)": "Costs shall be apportioned reflecting the relative success of the Parties on individual issues."
@@ -234,7 +225,6 @@ LIB = {
         "Option A (Confidential)": "The award shall remain confidential and shall not be published.",
         "Option B (Redacted)": "The award may be published in redacted form."
     },
-    # MISC
     "funding": {
         "Option A (None)": "The Parties confirm that no third-party funding is currently in place.",
         "Option B (Disclose)": "The existence and identity of any third-party funder must be disclosed immediately."
@@ -352,7 +342,7 @@ with t2:
         }
     )
     
-    # 1. Generate List for New Template (Final)
+    # 1. New List Format
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
@@ -365,13 +355,13 @@ with t2:
         })
     ctx['timetable_rows'] = timetable_rows
     
-    # 2. Generate Text Block for Old Template (Fallback)
+    # 2. Legacy Text Format
     table_text = ""
     for r in timetable_rows:
         table_text += f"{r['step']}. {r['date']} | {r['party']}: {r['action']} ({r['notes']})\n"
     ctx['procedural_timetable_table'] = table_text
 
-    # 3. Generate Individual Vars for Oldest Template (Fallback)
+    # 3. Legacy Variable Format
     for i, r in enumerate(timetable_rows):
         if i < 15:
             ctx[f'deadline_{i+1:02d}'] = r['date']
@@ -464,8 +454,7 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
-        # SAFETY NET: Fill missing keys with default empty strings
-        # This prevents the "UndefinedVariable" crash if a user skipped a tab
+        # SAFETY NET: Populate missing keys to prevent Jinja crash
         default_keys = [
             'claimant_rep_1', 'claimant_rep_2', 'respondent_rep_1', 'respondent_rep_2',
             'bifurcation_decision', 'consolidation_decision', 'tribunal_secretary_appointment',
@@ -478,11 +467,15 @@ with c_gen:
             'time_confirm_contact', 'time_notify_counsel', 'time_shred_docs', 
             'time_produce_docs', 'max_filename_len', 'time_hearing_bundle', 
             'time_submit_exhibits', 'hearing_hours', 'ai_guidelines_clause',
-            'green_protocols_clause', 'disability_clause', 'gdpr_clause'
+            'green_protocols_clause', 'disability_clause', 'gdpr_clause', 
+            'privilege_standard_decision', 'privilege_logs_decision', 'witness_exam_scope_decision',
+            'expert_meeting_decision', 'expert_hottubing_decision', 'demonstratives_decision',
+            'interpretation_decision', 'funding_disclosure_clause', 'submission_style_decision',
+            'page_limits_decision', 'last_submission_definition'
         ]
         for key in default_keys:
             if key not in ctx or ctx[key] is None:
-                ctx[key] = "[Not Selected]" # Or "" if you prefer blank
+                ctx[key] = "[Not Selected]"
 
         try:
             # TRY FINAL -> READY -> ORIGINAL
@@ -492,17 +485,29 @@ with c_gen:
                 if not os.path.exists(target_file):
                     target_file = "template_po1.docx"
 
-            doc = DocxTemplate(target_file)
-            doc.render(ctx)
-            
-            buf = BytesIO()
-            doc.save(buf)
-            buf.seek(0)
-            
-            st.download_button("📥 Download PO1", buf, "Procedural_Order_1.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-            st.success("Draft Generated Successfully!")
+            # Check if file exists before loading
+            if not os.path.exists(target_file):
+                st.error("❌ Template file missing! Upload 'template_po1_FINAL.docx' to GitHub.")
+            else:
+                doc = DocxTemplate(target_file)
+                doc.render(ctx)
+                
+                buf = BytesIO()
+                doc.save(buf)
+                buf.seek(0)
+                
+                st.download_button(
+                    label="📥 Download PO1", 
+                    data=buf, 
+                    file_name="Procedural_Order_1.docx", 
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                st.success(f"Draft Generated using {target_file}!")
+                
         except Exception as e:
-            st.error(f"Template Error: {e}")
+            # Full Error Traceback for debugging
+            st.error("An error occurred during generation:")
+            st.code(traceback.format_exc())
 
 with c_sync:
     if st.button("🔄 Sync Timetable to Phase 4"):
