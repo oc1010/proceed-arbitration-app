@@ -38,13 +38,13 @@ def update_clause_text(var_name, lib_key):
     text_key = f"in_{var_name}"
     
     # Get the selected label (e.g. "Option A (Memorial)")
-    selected_label = st.session_state[radio_key]
-    
-    # Fetch the full text from LIB
-    new_text = LIB[lib_key][selected_label]
-    
-    # Force update the text area in session state
-    st.session_state[text_key] = new_text
+    if radio_key in st.session_state:
+        selected_label = st.session_state[radio_key]
+        # Fetch the full text from LIB
+        if lib_key in LIB and selected_label in LIB[lib_key]:
+            new_text = LIB[lib_key][selected_label]
+            # Force update the text area in session state
+            st.session_state[text_key] = new_text
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
     """
@@ -72,44 +72,48 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         
         with cols[2]:
             # -- SELECTION LOGIC --
-            # 1. Determine Initial Text (Run once)
-            if f"in_{var_name}" not in st.session_state:
-                initial_val = default_text
-                
-                # Try to match Claimant's preference to a LIB key for default
-                if lib_key and lib_key in LIB:
-                    # Default to Option A
-                    keys = list(LIB[lib_key].keys())
-                    best_match = keys[0]
-                    
-                    # Try to find better match
-                    for k in keys:
-                        if k.split("(")[0].strip() in c_ans: # Match "Option A"
-                            best_match = k
-                            break
-                    
-                    initial_val = LIB[lib_key][best_match]
-                    
-                    # Store initial radio state
-                    st.session_state[f"rad_{var_name}"] = best_match
-                
-                st.session_state[f"in_{var_name}"] = initial_val
-
-            # 2. Radio Button (Trigger Callback on Change)
+            # 1. Radio Button (Trigger Callback on Change)
             if lib_key and lib_key in LIB:
-                options_list = list(LIB[lib_key].keys())
+                options_dict = LIB[lib_key]
+                options_list = list(options_dict.keys())
+                
+                # Check for Stale State (if LIB keys changed)
+                radio_key = f"rad_{var_name}"
+                if radio_key in st.session_state:
+                    if st.session_state[radio_key] not in options_list:
+                        del st.session_state[radio_key]
+
+                # Determine Default Index based on Claimant match (run once if key missing)
+                default_idx = 0
+                if radio_key not in st.session_state:
+                    for i, k in enumerate(options_list):
+                        if k.split("(")[0].strip() in c_ans: # Match "Option A"
+                            default_idx = i
+                            break
                 
                 st.radio(
                     "Select Variation:",
                     options_list,
-                    key=f"rad_{var_name}",
+                    index=default_idx if radio_key not in st.session_state else None,
+                    key=radio_key,
                     horizontal=True,
                     label_visibility="collapsed",
-                    on_change=update_clause_text, # <--- THE FIX
+                    on_change=update_clause_text, # <--- CRITICAL FIX
                     args=(var_name, lib_key)
                 )
+                
+                # Initialize text area content if missing
+                text_key = f"in_{var_name}"
+                if text_key not in st.session_state:
+                    # If radio exists, get its value, else get default
+                    current_radio = st.session_state.get(radio_key, options_list[default_idx])
+                    st.session_state[text_key] = options_dict[current_radio]
 
-            # 3. Text Area (Bound to Session State)
+            # Fallback if no LIB entry and no default provided
+            elif f"in_{var_name}" not in st.session_state:
+                st.session_state[f"in_{var_name}"] = default_text if default_text else clean_answer(c_ans)
+
+            # 2. The Editable Text Area
             final_val = st.text_area(
                 "Final Clause Content", 
                 key=f"in_{var_name}",
@@ -119,7 +123,7 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         st.divider()
         return final_val
 
-# --- 3. CLAUSE LIBRARIES (Complete) ---
+# --- 3. CLAUSE LIBRARIES (Full, Professional Sentences) ---
 LIB = {
     # --- GENERAL ---
     "bifurcation": {
@@ -479,7 +483,6 @@ c_gen, c_sync = st.columns([1, 4])
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
         try:
-            # Look for the FINAL file
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
                 target_file = "template_po1.docx" # Fallback
