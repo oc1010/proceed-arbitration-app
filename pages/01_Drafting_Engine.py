@@ -24,7 +24,6 @@ c_p1 = p1.get('claimant', {})
 
 # --- 2. LOGIC HELPERS ---
 def clean_answer(raw_text):
-    """Returns ONLY the sentence content for display."""
     if not raw_text or raw_text == "Pending": return "Pending"
     text = raw_text.replace("**", "").replace("*", "")
     if "Option " in text and ":" in text:
@@ -37,7 +36,6 @@ def update_clause_text(var_name, lib_key):
     """Callback: Updates the text area when radio button changes."""
     radio_key = f"rad_{var_name}"
     text_key = f"in_{var_name}"
-    
     if radio_key in st.session_state:
         selected_label = st.session_state[radio_key]
         if lib_key in LIB and selected_label in LIB[lib_key]:
@@ -45,12 +43,10 @@ def update_clause_text(var_name, lib_key):
             st.session_state[text_key] = new_text
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
-    """Advanced Widget: Toggle options -> Instantly update text."""
     with st.container():
         c_top, c_chk = st.columns([4, 1])
         c_top.markdown(f"**{label}**")
         is_included = c_chk.checkbox("Include?", value=True, key=f"chk_{var_name}")
-        
         if not is_included:
             st.divider()
             return "" 
@@ -68,10 +64,9 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
             if lib_key and lib_key in LIB:
                 options_dict = LIB[lib_key]
                 options_list = list(options_dict.keys())
-                
                 radio_key = f"rad_{var_name}"
                 
-                # Default selection logic
+                # Determine Default
                 default_idx = 0
                 if radio_key not in st.session_state:
                     for i, k in enumerate(options_list):
@@ -103,7 +98,7 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         st.divider()
         return final_val
 
-# --- 3. CLAUSE LIBRARIES ---
+# --- 3. CLAUSE LIBRARY (Full) ---
 LIB = {
     "bifurcation": {
         "Option A (Single)": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
@@ -299,7 +294,7 @@ with t1:
 
 with t2:
     st.header("📅 Procedural Timetable")
-    st.info("Configure the steps below. The app will generate a formal table.")
+    st.info("Configure the steps below.")
     
     col_preset, col_act = st.columns([3, 1])
     preset = col_preset.radio("Load Preset Template:", ["Memorial Style (Front Loaded)", "Pleading Style (Sequential)"], horizontal=True)
@@ -342,46 +337,39 @@ with t2:
         }
     )
     
-    # 1. New List Format
-    timetable_rows = []
-    for _, row in edited_df.iterrows():
-        d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
-        timetable_rows.append({
-            "step": row['Step'],
-            "date": d_str,
-            "party": row['Responsible Party'],
-            "action": row['Procedural requirements'],
-            "notes": row['Notes']
-        })
-    ctx['timetable_rows'] = timetable_rows
-    
-    # 2. Legacy Text Format
-    table_text = ""
-    for r in timetable_rows:
-        table_text += f"{r['step']}. {r['date']} | {r['party']}: {r['action']} ({r['notes']})\n"
-    ctx['procedural_timetable_table'] = table_text
-
-    # 3. Legacy Variable Format
-    for i, r in enumerate(timetable_rows):
-        if i < 15:
-            ctx[f'deadline_{i+1:02d}'] = r['date']
+    # --- STATIC TABLE POPULATION (Safety Fix) ---
+    # We populate r01_date, r02_date, etc. up to 20 rows.
+    for i in range(1, 21): 
+        idx = f"{i:02d}"
+        if i <= len(edited_df):
+            row = edited_df.iloc[i-1]
+            d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
+            ctx[f"r{idx}_step"] = row['Step']
+            ctx[f"r{idx}_date"] = d_str
+            ctx[f"r{idx}_party"] = row['Responsible Party']
+            ctx[f"r{idx}_action"] = row['Procedural requirements']
+            ctx[f"r{idx}_notes"] = row['Notes']
+        else:
+            # Blank out unused rows
+            ctx[f"r{idx}_step"] = ""
+            ctx[f"r{idx}_date"] = ""
+            ctx[f"r{idx}_party"] = ""
+            ctx[f"r{idx}_action"] = ""
+            ctx[f"r{idx}_notes"] = ""
 
     ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation", "mediation")
 
 with t3:
     st.header("Evidence")
-    
     ctx['platform_usage_clause'] = decision_widget("Platform Usage Protocol", "plat", "platform", "platform")
     ctx['submission_style_decision'] = decision_widget("Submission Style", "style", "style", "style")
     ctx['page_limits_decision'] = decision_widget("Page Limits", "pg", "limits_submission", "page_limits")
     ctx['last_submission_definition'] = decision_widget("Last Submission Def.", "last", "last_submission", "last_submission")
-    
     st.divider()
     ctx['evidence_rules_decision'] = decision_widget("IBA Rules", "iba", "doc_prod", "doc_prod")
     ctx['doc_prod_limits_decision'] = decision_widget("Doc Prod Limits", "lim", "limits", "limits")
     ctx['privilege_standard_decision'] = decision_widget("Privilege Standard", "priv", "privilege_std", "privilege_std")
     ctx['privilege_logs_decision'] = decision_widget("Privilege Logs", "logs", "privilege_logs", "privilege_logs")
-    
     st.subheader("Witnesses & Experts")
     ctx['witness_exam_scope_decision'] = decision_widget("Witness Exam Scope", "wit", "witness_exam", "witness_exam")
     ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting", "expert_meeting")
@@ -391,21 +379,16 @@ with t4:
     st.header("Hearing Logistics")
     c_p1_val = c_p1.get('p1_hearing', '')
     ctx['hearing_venue_decision'] = decision_widget("Hearing Venue", "venue", "physical_venue_preference", "venue", help_note=f"Phase 1 Pref: {c_p1_val}")
-    
     col_a, col_b = st.columns(2)
     ctx['physical_venue_city'] = col_a.text_input("City of Hearing", "London")
     ctx['hearing_hours'] = col_b.text_input("Hearing Hours", "09:30 to 17:30")
-    
     col_c, col_d = st.columns(2)
     ctx['time_notify_oral'] = col_c.text_input("Notice for Oral Witnesses", "45 days")
     ctx['time_appoint_interpreter'] = col_d.text_input("Time to Appoint Interpreter", "14 days")
-    
     col_e, col_f = st.columns(2)
     ctx['time_hearing_bundle'] = col_e.text_input("Hearing Bundle Deadline", "14 days")
     ctx['time_submit_exhibits'] = col_f.text_input("Submit Exhibits Post-Hearing", "48 hours")
-    
     ctx['date_decide_venue'] = st.text_input("Deadline to Decide Venue", "3 months prior")
-    
     ctx['chess_clock_decision'] = decision_widget("Chess Clock", "clock", "chess_clock", "chess_clock")
     ctx['transcription_decision'] = decision_widget("Transcription", "trans", "transcription", "transcription")
     ctx['demonstratives_decision'] = decision_widget("Demonstratives", "demo", "demonstratives", "demonstratives")
@@ -417,7 +400,6 @@ with t5:
     ctx['counsel_fee_cap_decision'] = decision_widget("Fee Caps", "fees", "counsel_fees", "counsel_fees")
     ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int_cost", "internal_costs", "internal_costs")
     ctx['deposit_structure_decision'] = decision_widget("Deposits", "dep", "deposits", "deposits")
-    
     st.divider()
     ctx['award_currency_decision'] = decision_widget("Currency", "curr", "currency", "currency")
     ctx['interest_decision'] = decision_widget("Interest", "interest_rate", "interest", "interest")
@@ -431,20 +413,16 @@ with t6:
     ctx['green_protocols_clause'] = decision_widget("Green Protocols", "green", "sustainability", "green_protocols")
     ctx['disability_clause'] = decision_widget("Accessibility", "dis", "disability", "disability")
     ctx['gdpr_clause'] = decision_widget("GDPR", "gdpr", "gdpr", "gdpr")
-    
     st.subheader("Document Control & Deadlines")
     col_1, col_2 = st.columns(2)
     ctx['deadline_timezone'] = col_1.text_input("Deadline Timezone", "17:00 (Seat of Arbitration)")
     ctx['time_abbreviations'] = col_2.text_input("Time for Abbrev. List", "7 days")
-    
     col_3, col_4 = st.columns(2)
     ctx['time_confirm_contact'] = col_3.text_input("Confirm Contact Details", "7 days")
     ctx['time_notify_counsel'] = col_4.text_input("Notify New Counsel", "immediately")
-    
     col_5, col_6 = st.columns(2)
     ctx['time_shred_docs'] = col_5.text_input("Time to Shred Docs", "6 months")
     ctx['time_produce_docs'] = col_6.text_input("Time to Produce Docs", "28 days")
-    
     ctx['max_filename_len'] = st.text_input("Max Filename Length", "50 characters")
     ctx['prehearing_matters'] = "Logistics, Bundles, and Demonstratives"
 
@@ -454,7 +432,7 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
-        # SAFETY NET: Populate missing keys to prevent Jinja crash
+        # SAFETY NET: Populate missing keys
         default_keys = [
             'claimant_rep_1', 'claimant_rep_2', 'respondent_rep_1', 'respondent_rep_2',
             'bifurcation_decision', 'consolidation_decision', 'tribunal_secretary_appointment',
@@ -478,16 +456,16 @@ with c_gen:
                 ctx[key] = "[Not Selected]"
 
         try:
-            # TRY FINAL -> READY -> ORIGINAL
-            target_file = "template_po1_FINAL.docx"
+            # TRY FIXED -> FINAL -> READY -> ORIGINAL
+            target_file = "template_po1_FIXED.docx"
             if not os.path.exists(target_file):
-                target_file = "template_po1_READY.docx"
+                target_file = "template_po1_FINAL.docx"
                 if not os.path.exists(target_file):
                     target_file = "template_po1.docx"
 
-            # Check if file exists before loading
+            # Check existence
             if not os.path.exists(target_file):
-                st.error("❌ Template file missing! Upload 'template_po1_FINAL.docx' to GitHub.")
+                st.error("❌ Template file missing! Upload 'template_po1_FIXED.docx' to GitHub.")
             else:
                 doc = DocxTemplate(target_file)
                 doc.render(ctx)
@@ -505,7 +483,6 @@ with c_gen:
                 st.success(f"Draft Generated using {target_file}!")
                 
         except Exception as e:
-            # Full Error Traceback for debugging
             st.error("An error occurred during generation:")
             st.code(traceback.format_exc())
 
