@@ -23,11 +23,8 @@ c_p1 = p1.get('claimant', {})
 
 # --- 2. LOGIC HELPERS ---
 def clean_answer(raw_text):
-    """
-    Returns ONLY the sentence content. 
-    Removes '**Option A:**' and any bold markers.
-    """
-    if not raw_text or raw_text == "Pending": return ""
+    """Clean raw answers for display only."""
+    if not raw_text or raw_text == "Pending": return "Pending"
     text = raw_text.replace("**", "").replace("*", "")
     if "Option " in text and ":" in text:
         parts = text.split(":", 1)
@@ -35,32 +32,21 @@ def clean_answer(raw_text):
             return parts[1].strip()
     return text.strip()
 
-def get_legal_text(key, raw_answer):
-    """Maps the cleaned answer to the full legal clause in LIB."""
-    clean = clean_answer(raw_answer)
-    if key in LIB:
-        for option_key, legal_clause in LIB[key].items():
-            # Check for keyword match ("Option A") or content match
-            if option_key in raw_answer or clean in legal_clause:
-                return legal_clause
-    return clean
-
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
     """
-    Widget that returns ONLY the clause text, no labels.
+    Advanced Widget: Allows Arbitrator to toggle between Clause Options.
     """
     with st.container():
+        # Layout: Header + Checkbox
         c_top, c_chk = st.columns([4, 1])
         c_top.markdown(f"**{label}**")
-        
         is_included = c_chk.checkbox("Include?", value=True, key=f"chk_{var_name}")
         
         if not is_included:
             st.divider()
             return "" 
 
-        if help_note: st.caption(help_note)
-        
+        # Display Parties' Positions
         c_ans = claimant.get(key_in_db, "Pending")
         r_ans = respondent.get(key_in_db, "Pending")
         
@@ -70,170 +56,209 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         with cols[1]:
             st.warning(f"👤 **Respondent:**\n\n{clean_answer(r_ans)}")
         
-        if lib_key:
-            suggested_text = get_legal_text(lib_key, c_ans)
-        else:
-            suggested_text = clean_answer(c_ans)
-            
-        final_default = default_text if default_text else suggested_text
-
         with cols[2]:
-            val = st.text_area(f"Final Text ({label})", value=final_default, key=f"in_{var_name}", height=100)
+            # --- LOGIC: SELECTOR FOR OPTIONS ---
+            current_text = default_text
+            
+            # If this clause has variations in the LIB
+            if lib_key and lib_key in LIB:
+                options_dict = LIB[lib_key]
+                option_labels = list(options_dict.keys())
+                
+                # Try to find a smart default index based on Claimant's answer
+                default_idx = 0
+                for i, k in enumerate(option_labels):
+                    if k in c_ans: # If "Option A" is in Claimant's answer string
+                        default_idx = i
+                        break
+                
+                # The Selector
+                selected_option = st.radio(
+                    "Select Clause Variation:",
+                    option_labels,
+                    index=default_idx,
+                    key=f"rad_{var_name}",
+                    horizontal=True,
+                    label_visibility="collapsed"
+                )
+                
+                # Update text based on selection
+                current_text = options_dict[selected_option]
+            
+            elif not default_text:
+                # Fallback if no LIB entry and no default provided
+                current_text = clean_answer(c_ans)
+
+            # The Editable Text Area
+            final_val = st.text_area(
+                "Final Clause Content", 
+                value=current_text, 
+                key=f"in_{var_name}",
+                height=100
+            )
         
         st.divider()
-        return val
+        return final_val
 
-# --- 3. CLAUSE LIBRARIES (Complete Legal Sentences Only) ---
+# --- 3. CLAUSE LIBRARIES (Full, Professional Sentences) ---
 LIB = {
-    # GENERAL
+    # --- GENERAL ---
     "bifurcation": {
-        "Option A": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
-        "Option B": "Pursuant to LCIA Article 22.1(vii), the proceedings are bifurcated. Phase 1 shall address Liability only."
+        "Option A (Single)": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
+        "Option B (Bifurcated)": "Pursuant to LCIA Article 22.1(vii), the proceedings are bifurcated. Phase 1 shall address Liability only."
     },
     "consolidation": {
-        "Option A": "This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
-        "Option B": "The proceedings shall be consolidated with related proceedings."
+        "Option A (None)": "This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
+        "Option B (Consolidated)": "The proceedings shall be consolidated with related proceedings."
     },
     "secretary": {
-        "Option A": "The Tribunal appoints a Tribunal Secretary with the consent of the Parties.",
-        "Option B": "No Tribunal Secretary shall be appointed."
+        "Option A (Appointed)": "The Tribunal appoints a Tribunal Secretary with the consent of the Parties.",
+        "Option B (None)": "No Tribunal Secretary shall be appointed."
     },
     "sec_fees": {
-        "Option A": "The Tribunal Secretary's fees shall be charged at a rate between £75 and £175 per hour, in accordance with the standard LCIA Schedule of Costs.",
-        "Option B": "The Tribunal Secretary shall not bill separately for their time."
+        "Option A (Hourly)": "The Tribunal Secretary's fees shall be charged at a rate between £75 and £175 per hour, in accordance with the standard LCIA Schedule of Costs.",
+        "Option B (No Fee)": "The Tribunal Secretary shall not bill separately for their time."
     },
-    
-    # SUBMISSIONS
+    "mediation": {
+        "Option A (Window)": "The procedural timetable includes a specific window for mediation stay, should the Parties agree to utilise it.",
+        "Option B (No Window)": "No specific stay for mediation is included, though the Parties may agree to mediate at any time."
+    },
+
+    # --- SUBMISSIONS ---
     "style": {
-        "Option A": "The Parties shall submit written submissions in the Memorial Style, involving the simultaneous exchange of evidence with pleadings.",
-        "Option B": "The Parties shall submit written submissions in the Pleading Style, where evidence is exchanged only after the disclosure phase."
+        "Option A (Memorial)": "The Parties shall submit written submissions in the Memorial Style, involving the simultaneous exchange of evidence with pleadings.",
+        "Option B (Pleading)": "The Parties shall submit written submissions in the Pleading Style, where evidence is exchanged only after the disclosure phase."
+    },
+    "platform": {
+        "Option A (PROCEED)": 'The Parties and the Arbitral Tribunal shall use the PROCEED platform ("Platform") for all filings and the procedural calendar.',
+        "Option B (Email)": "The Parties shall conduct case management via email and file documents in PDF format."
     },
     "page_limits": {
-        "Option A": "There are no specific page limits for submissions. The Parties are to exercise reasonable discretion.",
-        "Option B": "Strict page limits shall apply to all written submissions as directed by the Tribunal.",
-        "Option C": "Page limits shall apply to the legal argument sections only."
+        "Option A (None)": "There are no specific page limits for submissions. The Parties are to exercise reasonable discretion.",
+        "Option B (Strict)": "Strict page limits shall apply to all written submissions as directed by the Tribunal.",
+        "Option C (Legal Only)": "Page limits shall apply to the legal argument sections only."
     },
     "last_submission": {
-        "Option A": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
-        "Option B": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
+        "Option A (Merits)": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
+        "Option B (Final Filing)": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
     },
     
-    # EVIDENCE
+    # --- EVIDENCE ---
     "doc_prod": {
-        "Option A": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
-        "Option B": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
-        "Option C": "The Tribunal shall apply the general evidentiary powers under the LCIA Rules without specific reference to the IBA Rules."
+        "Option A (IBA Bound)": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
+        "Option B (IBA Guided)": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
+        "Option C (LCIA General)": "The Tribunal shall apply the general evidentiary powers under the LCIA Rules without specific reference to the IBA Rules."
     },
     "limits": {
-        "Option A": "Document requests shall be subject to the standard of relevance and materiality set out in the IBA Rules.",
-        "Option B": "Document requests shall be capped at a maximum number to strictly control costs.",
-        "Option C": "No document production shall take place in these proceedings."
+        "Option A (Relevance)": "Document requests shall be subject to the standard of relevance and materiality set out in the IBA Rules.",
+        "Option B (Capped)": "Document requests shall be capped at a maximum number to strictly control costs.",
+        "Option C (None)": "No document production shall take place in these proceedings."
     },
     "privilege_std": {
-        "Option A": "The Tribunal shall determine issues of legal privilege in accordance with the rules of privilege applicable at the Seat of Arbitration.",
-        "Option B": "The Tribunal shall determine issues of legal privilege in accordance with the rules most favorable to maintaining the privilege."
+        "Option A (Seat Law)": "The Tribunal shall determine issues of legal privilege in accordance with the rules of privilege applicable at the Seat of Arbitration.",
+        "Option B (Most Favored)": "The Tribunal shall determine issues of legal privilege in accordance with the rules most favorable to maintaining the privilege."
     },
     "privilege_logs": {
-        "Option A": "Parties withholding documents on grounds of privilege must produce a detailed privilege log describing the document and the basis for privilege.",
-        "Option B": "Privilege logs are not required unless specifically ordered by the Tribunal following a dispute."
+        "Option A (Required)": "Parties withholding documents on grounds of privilege must produce a detailed privilege log describing the document and the basis for privilege.",
+        "Option B (On Dispute)": "Privilege logs are not required unless specifically ordered by the Tribunal following a dispute."
     },
     "witness_exam": {
-        "Option A": "Witness statements shall stand as evidence-in-chief, and direct examination at the hearing shall be limited.",
-        "Option B": "Witnesses may be subject to full direct examination at the hearing."
+        "Option A (Limited)": "Witness statements shall stand as evidence-in-chief, and direct examination at the hearing shall be limited.",
+        "Option B (Full)": "Witnesses may be subject to full direct examination at the hearing."
     },
     "expert_meeting": {
-        "Option A": "Expert counterparts shall meet and produce a Joint Report identifying areas of agreement and disagreement prior to the hearing.",
-        "Option B": "No formal pre-hearing meeting of experts is required."
+        "Option A (Joint Report)": "Expert counterparts shall meet and produce a Joint Report identifying areas of agreement and disagreement prior to the hearing.",
+        "Option B (None)": "No formal pre-hearing meeting of experts is required."
     },
     "expert_hot_tub": {
-        "Option A": "Experts shall be examined sequentially, one after the other.",
-        "Option B": "Experts shall be examined concurrently ('hot-tubbing') on an issue-by-issue basis."
+        "Option A (Sequential)": "Experts shall be examined sequentially, one after the other.",
+        "Option B (Concurrent)": "Experts shall be examined concurrently ('hot-tubbing') on an issue-by-issue basis."
     },
     
-    # HEARING
+    # --- HEARING ---
     "venue": {
         "At Seat": "The Oral Hearing shall be held physically at the Seat of Arbitration.",
         "Neutral Venue": "The Oral Hearing shall be held physically at a neutral venue (IDRC London).",
         "Virtual": "The Oral Hearing shall be held virtually via video conference."
     },
     "chess_clock": {
-        "Option A": "Time allocation at the hearing shall be managed using the 'Chess Clock' method, with a fixed split of total hearing time allocated to each Party.",
-        "Option B": "The Tribunal shall manage time allocation flexibly without a strict Chess Clock."
+        "Option A (Strict)": "Time allocation at the hearing shall be managed using the 'Chess Clock' method, with a fixed split of total hearing time allocated to each Party.",
+        "Option B (Flexible)": "The Tribunal shall manage time allocation flexibly without a strict Chess Clock."
     },
     "transcription": {
-        "Option A": "Live, real-time transcription is required for the hearing.",
-        "Option B": "Daily transcripts shall be provided at the end of each hearing day."
+        "Option A (Real-time)": "Live, real-time transcription is required for the hearing.",
+        "Option B (Daily)": "Daily transcripts shall be provided at the end of each hearing day."
     },
     "demonstratives": {
-        "Option A": "Demonstrative exhibits must be exchanged in hard copy or email at least 24 hours before use.",
-        "Option B": "Demonstrative exhibits may be used without prior exchange provided they contain no new evidence."
+        "Option A (24h Notice)": "Demonstrative exhibits must be exchanged in hard copy or email at least 24 hours before use.",
+        "Option B (No Notice)": "Demonstrative exhibits may be used without prior exchange provided they contain no new evidence."
     },
     "interpretation": {
-        "Option A": "The proceedings will be conducted entirely in English; no interpretation is anticipated.",
-        "Option B": "Interpretation services shall be arranged for witnesses testifying in other languages."
+        "Option A (English Only)": "The proceedings will be conducted entirely in English; no interpretation is anticipated.",
+        "Option B (Required)": "Interpretation services shall be arranged for witnesses testifying in other languages."
     },
     
-    # COSTS & AWARD
+    # --- COSTS & AWARD ---
     "cost_alloc": {
-        "Option A": "Costs shall be allocated on the principle that 'costs follow the event' (the loser pays).",
-        "Option B": "Costs shall be apportioned reflecting the relative success of the Parties on individual issues."
+        "Option A (Loser Pays)": "Costs shall be allocated on the principle that 'costs follow the event' (the loser pays).",
+        "Option B (Apportioned)": "Costs shall be apportioned reflecting the relative success of the Parties on individual issues."
     },
     "counsel_fees": {
-        "Option A": "Recoverable counsel fees shall be subject to the principle of reasonableness and assessed by reference to applicable market rates.",
-        "Option B": "Counsel fees shall be capped at a fixed amount determined by the Tribunal."
+        "Option A (Reasonable)": "Recoverable counsel fees shall be subject to the principle of reasonableness and assessed by reference to applicable market rates.",
+        "Option B (Capped)": "Counsel fees shall be capped at a fixed amount determined by the Tribunal."
     },
     "internal_costs": {
-        "Option A": "Reasonable internal management costs incurred by the Parties are recoverable.",
-        "Option B": "Internal management costs are not recoverable."
+        "Option A (Recoverable)": "Reasonable internal management costs incurred by the Parties are recoverable.",
+        "Option B (Not Recoverable)": "Internal management costs are not recoverable."
     },
     "deposits": {
-        "Option A": "Administrative deposits shall be split 50/50 between Claimant and Respondent from the outset.",
-        "Option B": "The Claimant shall pay the initial deposit, subject to later adjustment."
+        "Option A (50/50)": "Administrative deposits shall be split 50/50 between Claimant and Respondent from the outset.",
+        "Option B (Claimant First)": "The Claimant shall pay the initial deposit, subject to later adjustment."
     },
     "currency": {
-        "Option A": "The Award shall be expressed in the currency of the contract.",
-        "Option B": "The Award shall be expressed in the currency in which costs were incurred."
+        "Option A (Contract)": "The Award shall be expressed in the currency of the contract.",
+        "Option B (Incurred)": "The Award shall be expressed in the currency in which costs were incurred."
     },
     "interest": {
-        "Option A": "The Tribunal shall apply interest rates and methods prescribed by the applicable substantive law.",
-        "Option B": "The Tribunal shall apply a commercial interest rate (e.g., LIBOR/SOFR + 2%)."
+        "Option A (Substantive Law)": "The Tribunal shall apply interest rates and methods prescribed by the applicable substantive law.",
+        "Option B (Commercial)": "The Tribunal shall apply a commercial interest rate (e.g., LIBOR/SOFR + 2%)."
     },
     "sign_award": {
-        "Option A": "The Parties agree that the Tribunal may sign the Award electronically.",
-        "Option B": "The Parties require the Award to be signed in 'wet ink' (hard copy)."
+        "Option A (Electronic)": "The Parties agree that the Tribunal may sign the Award electronically.",
+        "Option B (Wet Ink)": "The Parties require the Award to be signed in 'wet ink' (hard copy)."
     },
     "publication": {
-        "Option A": "The award shall remain confidential and shall not be published.",
-        "Option B": "The award may be published in redacted form."
+        "Option A (Confidential)": "The award shall remain confidential and shall not be published.",
+        "Option B (Redacted)": "The award may be published in redacted form."
     },
     
-    # MISC
+    # --- MISC ---
     "funding": {
-        "Option A": "The Parties confirm that no third-party funding is currently in place.",
-        "Option B": "The existence and identity of any third-party funder must be disclosed immediately."
+        "Option A (None)": "The Parties confirm that no third-party funding is currently in place.",
+        "Option B (Disclose)": "The existence and identity of any third-party funder must be disclosed immediately."
     },
     "ai_guidelines": {
-        "Option A": "The Tribunal shall adopt the CIArb Guidelines on the Use of Artificial Intelligence as a guiding text for the Parties' use of technology.",
-        "Option B": "No specific guidelines on AI are adopted."
+        "Option A (CIArb)": "The Tribunal shall adopt the CIArb Guidelines on the Use of Artificial Intelligence as a guiding text for the Parties' use of technology.",
+        "Option B (None)": "No specific guidelines on AI are adopted."
     },
     "green_protocols": {
-        "Option A": "The Tribunal and Parties shall conduct the arbitration in accordance with the Green Protocols of the Campaign for Greener Arbitrations.",
-        "Option B": "No specific sustainability protocols are adopted."
+        "Option A (Adopted)": "The Tribunal and Parties shall conduct the arbitration in accordance with the Green Protocols of the Campaign for Greener Arbitrations.",
+        "Option B (None)": "No specific sustainability protocols are adopted."
     },
     "disability": {
-        "Option A": "At any point, either Party may advise the Tribunal of a person who requires reasonable accommodation to facilitate their full participation.",
-        "Option B": "No specific clause on accommodations is required."
+        "Option A (Included)": "At any point, either Party may advise the Tribunal of a person who requires reasonable accommodation to facilitate their full participation.",
+        "Option B (None)": "No specific clause on accommodations is required."
     },
     "gdpr": {
-        "Option A": "The Parties agree that standard security measures, including the use of encrypted email and the designated Platform, are sufficient for data protection purposes.",
-        "Option B": "A specific Data Protection Protocol shall be established."
+        "Option A (Standard)": "The Parties agree that standard security measures, including the use of encrypted email and the designated Platform, are sufficient for data protection purposes.",
+        "Option B (Protocol)": "A specific Data Protection Protocol shall be established."
     }
 }
 
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
-# --- FIX: STABLE TIMETABLE INITIALIZATION ---
+# --- STABLE TIMETABLE INIT ---
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
         {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
@@ -314,10 +339,10 @@ with t2:
         st.session_state.timetable_df = pd.DataFrame(data)
         st.rerun()
 
-    # --- FIX: DATA EDITOR WITH STABLE KEY ---
+    # --- EDITOR (Pinned with Key) ---
     edited_df = st.data_editor(
         st.session_state.timetable_df,
-        key="timetable_editor", # Critical for stability
+        key="timetable_editor", 
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -329,32 +354,26 @@ with t2:
         }
     )
     
-    # Generate List for Word Table (Mapping new column names to template keys)
+    # Generate List for Word Table
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
         timetable_rows.append({
             "step": row['Step'],
             "date": d_str,
-            "party": row['Responsible Party'],       # Mapped for template
-            "action": row['Procedural requirements'], # Mapped for template
+            "party": row['Responsible Party'],
+            "action": row['Procedural requirements'],
             "notes": row['Notes']
         })
     ctx['timetable_rows'] = timetable_rows
     
-    ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation")
+    ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation", "mediation")
 
 # --- TAB 3: EVIDENCE ---
 with t3:
     st.header("Evidence")
     
-    # UPDATED: Full Sentence Platform Protocol
-    plat_choice = claimant.get("platform", "Pending")
-    PROCEED_PROTOCOL = 'The Parties and the Arbitral Tribunal shall use the PROCEED platform ("Platform") for all filings and the procedural calendar.'
-    EMAIL_PROTOCOL = "The Parties shall conduct case management via email."
-    default_plat = PROCEED_PROTOCOL if "PROCEED" in str(plat_choice) else EMAIL_PROTOCOL
-    ctx['platform_usage_clause'] = decision_widget("Platform Usage Protocol", "plat", "platform", default_text=default_plat)
-
+    ctx['platform_usage_clause'] = decision_widget("Platform Usage Protocol", "plat", "platform", "platform")
     ctx['submission_style_decision'] = decision_widget("Submission Style", "style", "style", "style")
     ctx['page_limits_decision'] = decision_widget("Page Limits", "pg", "limits_submission", "page_limits")
     ctx['last_submission_definition'] = decision_widget("Last Submission Def.", "last", "last_submission", "last_submission")
@@ -441,7 +460,6 @@ c_gen, c_sync = st.columns([1, 4])
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
         try:
-            # Look for the template
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
                 target_file = "template_po1.docx" # Fallback
