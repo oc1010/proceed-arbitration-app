@@ -83,70 +83,157 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         st.divider()
         return val
 
-# --- 3. CLAUSE LIBRARIES (Full Professional Sentences) ---
+# --- 3. CLAUSE LIBRARIES (Complete Legal Sentences Only) ---
 LIB = {
+    # GENERAL
     "bifurcation": {
         "Option A": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
         "Option B": "Pursuant to LCIA Article 22.1(vii), the proceedings are bifurcated. Phase 1 shall address Liability only."
     },
     "consolidation": {
         "Option A": "This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
-        "Option B": "The proceedings shall be consolidated."
+        "Option B": "The proceedings shall be consolidated with related proceedings."
     },
+    "secretary": {
+        "Option A": "The Tribunal appoints a Tribunal Secretary with the consent of the Parties.",
+        "Option B": "No Tribunal Secretary shall be appointed."
+    },
+    "sec_fees": {
+        "Option A": "The Tribunal Secretary's fees shall be charged at a rate between £75 and £175 per hour, in accordance with the standard LCIA Schedule of Costs.",
+        "Option B": "The Tribunal Secretary shall not bill separately for their time."
+    },
+    
+    # SUBMISSIONS
     "style": {
-        "Option A": "The Parties shall submit written submissions in the Memorial Style (simultaneous exchange of evidence).",
-        "Option B": "The Parties shall submit written submissions in the Pleading Style (evidence follows disclosure)."
+        "Option A": "The Parties shall submit written submissions in the Memorial Style, involving the simultaneous exchange of evidence with pleadings.",
+        "Option B": "The Parties shall submit written submissions in the Pleading Style, where evidence is exchanged only after the disclosure phase."
     },
     "page_limits": {
         "Option A": "There are no specific page limits for submissions. The Parties are to exercise reasonable discretion.",
-        "Option B": "Strict page limits shall apply to all written submissions.",
+        "Option B": "Strict page limits shall apply to all written submissions as directed by the Tribunal.",
         "Option C": "Page limits shall apply to the legal argument sections only."
     },
     "last_submission": {
         "Option A": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
         "Option B": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
     },
+    
+    # EVIDENCE
     "doc_prod": {
         "Option A": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
         "Option B": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
-        "Option C": "The Tribunal shall apply the general evidentiary powers under the LCIA Rules."
+        "Option C": "The Tribunal shall apply the general evidentiary powers under the LCIA Rules without specific reference to the IBA Rules."
     },
     "limits": {
-        "Option A": "Document requests shall be subject to the standard of relevance and materiality in the IBA Rules.",
-        "Option B": "Document requests shall be capped at a maximum number to control costs.",
-        "Option C": "No document production shall take place."
+        "Option A": "Document requests shall be subject to the standard of relevance and materiality set out in the IBA Rules.",
+        "Option B": "Document requests shall be capped at a maximum number to strictly control costs.",
+        "Option C": "No document production shall take place in these proceedings."
+    },
+    "privilege_std": {
+        "Option A": "The Tribunal shall determine issues of legal privilege in accordance with the rules of privilege applicable at the Seat of Arbitration.",
+        "Option B": "The Tribunal shall determine issues of legal privilege in accordance with the rules most favorable to maintaining the privilege."
     },
     "privilege_logs": {
-        "Option A": "Parties withholding documents on grounds of privilege must produce a detailed privilege log.",
+        "Option A": "Parties withholding documents on grounds of privilege must produce a detailed privilege log describing the document and the basis for privilege.",
         "Option B": "Privilege logs are not required unless specifically ordered by the Tribunal following a dispute."
     },
     "witness_exam": {
-        "Option A": "Witness statements shall stand as evidence-in-chief. Direct examination at the hearing is limited.",
+        "Option A": "Witness statements shall stand as evidence-in-chief, and direct examination at the hearing shall be limited.",
         "Option B": "Witnesses may be subject to full direct examination at the hearing."
     },
+    "expert_meeting": {
+        "Option A": "Expert counterparts shall meet and produce a Joint Report identifying areas of agreement and disagreement prior to the hearing.",
+        "Option B": "No formal pre-hearing meeting of experts is required."
+    },
+    "expert_hot_tub": {
+        "Option A": "Experts shall be examined sequentially, one after the other.",
+        "Option B": "Experts shall be examined concurrently ('hot-tubbing') on an issue-by-issue basis."
+    },
+    
+    # HEARING
     "venue": {
         "At Seat": "The Oral Hearing shall be held physically at the Seat of Arbitration.",
         "Neutral Venue": "The Oral Hearing shall be held physically at a neutral venue (IDRC London).",
         "Virtual": "The Oral Hearing shall be held virtually via video conference."
     },
+    "chess_clock": {
+        "Option A": "Time allocation at the hearing shall be managed using the 'Chess Clock' method, with a fixed split of total hearing time allocated to each Party.",
+        "Option B": "The Tribunal shall manage time allocation flexibly without a strict Chess Clock."
+    },
+    "transcription": {
+        "Option A": "Live, real-time transcription is required for the hearing.",
+        "Option B": "Daily transcripts shall be provided at the end of each hearing day."
+    },
+    "demonstratives": {
+        "Option A": "Demonstrative exhibits must be exchanged in hard copy or email at least 24 hours before use.",
+        "Option B": "Demonstrative exhibits may be used without prior exchange provided they contain no new evidence."
+    },
+    "interpretation": {
+        "Option A": "The proceedings will be conducted entirely in English; no interpretation is anticipated.",
+        "Option B": "Interpretation services shall be arranged for witnesses testifying in other languages."
+    },
+    
+    # COSTS & AWARD
     "cost_alloc": {
-        "Option A": "Costs shall be allocated on the principle that 'costs follow the event' (loser pays).",
+        "Option A": "Costs shall be allocated on the principle that 'costs follow the event' (the loser pays).",
         "Option B": "Costs shall be apportioned reflecting the relative success of the Parties on individual issues."
+    },
+    "counsel_fees": {
+        "Option A": "Recoverable counsel fees shall be subject to the principle of reasonableness and assessed by reference to applicable market rates.",
+        "Option B": "Counsel fees shall be capped at a fixed amount determined by the Tribunal."
+    },
+    "internal_costs": {
+        "Option A": "Reasonable internal management costs incurred by the Parties are recoverable.",
+        "Option B": "Internal management costs are not recoverable."
+    },
+    "deposits": {
+        "Option A": "Administrative deposits shall be split 50/50 between Claimant and Respondent from the outset.",
+        "Option B": "The Claimant shall pay the initial deposit, subject to later adjustment."
     },
     "currency": {
         "Option A": "The Award shall be expressed in the currency of the contract.",
         "Option B": "The Award shall be expressed in the currency in which costs were incurred."
     },
+    "interest": {
+        "Option A": "The Tribunal shall apply interest rates and methods prescribed by the applicable substantive law.",
+        "Option B": "The Tribunal shall apply a commercial interest rate (e.g., LIBOR/SOFR + 2%)."
+    },
     "sign_award": {
         "Option A": "The Parties agree that the Tribunal may sign the Award electronically.",
         "Option B": "The Parties require the Award to be signed in 'wet ink' (hard copy)."
+    },
+    "publication": {
+        "Option A": "The award shall remain confidential and shall not be published.",
+        "Option B": "The award may be published in redacted form."
+    },
+    
+    # MISC
+    "funding": {
+        "Option A": "The Parties confirm that no third-party funding is currently in place.",
+        "Option B": "The existence and identity of any third-party funder must be disclosed immediately."
+    },
+    "ai_guidelines": {
+        "Option A": "The Tribunal shall adopt the CIArb Guidelines on the Use of Artificial Intelligence as a guiding text for the Parties' use of technology.",
+        "Option B": "No specific guidelines on AI are adopted."
+    },
+    "green_protocols": {
+        "Option A": "The Tribunal and Parties shall conduct the arbitration in accordance with the Green Protocols of the Campaign for Greener Arbitrations.",
+        "Option B": "No specific sustainability protocols are adopted."
+    },
+    "disability": {
+        "Option A": "At any point, either Party may advise the Tribunal of a person who requires reasonable accommodation to facilitate their full participation.",
+        "Option B": "No specific clause on accommodations is required."
+    },
+    "gdpr": {
+        "Option A": "The Parties agree that standard security measures, including the use of encrypted email and the designated Platform, are sufficient for data protection purposes.",
+        "Option B": "A specific Data Protection Protocol shall be established."
     }
 }
 
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
-# Initialize Timetable State with NEW COLUMN NAMES
+# --- FIX: STABLE TIMETABLE INITIALIZATION ---
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
         {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
@@ -187,12 +274,11 @@ with t1:
     ctx['bifurcation_decision'] = decision_widget("Bifurcation", "bif", "bifurcation", "bifurcation")
     ctx['consolidation_decision'] = decision_widget("Consolidation", "con", "consolidation", "consolidation")
     
-    sec_clause = decision_widget("Secretary Appointment", "sec", "secretary", 
-        default_text="The Tribunal appoints a Secretary with the consent of the Parties.")
+    sec_clause = decision_widget("Secretary Appointment", "sec", "secretary", "secretary")
     ctx['tribunal_secretary_appointment'] = sec_clause
     
-    if sec_clause:
-        ctx['tribunal_secretary_fees'] = decision_widget("Secretary Fees", "sec_fees", "sec_fees")
+    if sec_clause and "No Tribunal Secretary" not in sec_clause:
+        ctx['tribunal_secretary_fees'] = decision_widget("Secretary Fees", "sec_fees", "sec_fees", "sec_fees")
     else:
         ctx['tribunal_secretary_fees'] = ""
 
@@ -228,10 +314,10 @@ with t2:
         st.session_state.timetable_df = pd.DataFrame(data)
         st.rerun()
 
-    # EDITOR with KEY to prevent refreshing
+    # --- FIX: DATA EDITOR WITH STABLE KEY ---
     edited_df = st.data_editor(
         st.session_state.timetable_df,
-        key="timetable_editor", 
+        key="timetable_editor", # Critical for stability
         num_rows="dynamic",
         use_container_width=True,
         column_config={
@@ -243,18 +329,15 @@ with t2:
         }
     )
     
-    # Update Session State manually isn't strictly needed with 'key' but good for safety if we use it elsewhere
-    st.session_state.timetable_df = edited_df
-    
-    # Generate List for Word Table
+    # Generate List for Word Table (Mapping new column names to template keys)
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
         timetable_rows.append({
             "step": row['Step'],
             "date": d_str,
-            "party": row['Responsible Party'],
-            "action": row['Procedural requirements'],
+            "party": row['Responsible Party'],       # Mapped for template
+            "action": row['Procedural requirements'], # Mapped for template
             "notes": row['Notes']
         })
     ctx['timetable_rows'] = timetable_rows
@@ -265,11 +348,10 @@ with t2:
 with t3:
     st.header("Evidence")
     
-    # UPDATED PLATFORM PROTOCOL TEXT
+    # UPDATED: Full Sentence Platform Protocol
     plat_choice = claimant.get("platform", "Pending")
     PROCEED_PROTOCOL = 'The Parties and the Arbitral Tribunal shall use the PROCEED platform ("Platform") for all filings and the procedural calendar.'
     EMAIL_PROTOCOL = "The Parties shall conduct case management via email."
-    
     default_plat = PROCEED_PROTOCOL if "PROCEED" in str(plat_choice) else EMAIL_PROTOCOL
     ctx['platform_usage_clause'] = decision_widget("Platform Usage Protocol", "plat", "platform", default_text=default_plat)
 
@@ -280,13 +362,13 @@ with t3:
     st.divider()
     ctx['evidence_rules_decision'] = decision_widget("IBA Rules", "iba", "doc_prod", "doc_prod")
     ctx['doc_prod_limits_decision'] = decision_widget("Doc Prod Limits", "lim", "limits", "limits")
-    ctx['privilege_standard_decision'] = decision_widget("Privilege Standard", "priv", "privilege_std")
+    ctx['privilege_standard_decision'] = decision_widget("Privilege Standard", "priv", "privilege_std", "privilege_std")
     ctx['privilege_logs_decision'] = decision_widget("Privilege Logs", "logs", "privilege_logs", "privilege_logs")
     
     st.subheader("Witnesses & Experts")
     ctx['witness_exam_scope_decision'] = decision_widget("Witness Exam Scope", "wit", "witness_exam", "witness_exam")
-    ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting")
-    ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub")
+    ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting", "expert_meeting")
+    ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub", "expert_hot_tub")
 
 # --- TAB 4: HEARING ---
 with t4:
@@ -308,33 +390,33 @@ with t4:
     
     ctx['date_decide_venue'] = st.text_input("Deadline to Decide Venue", "3 months prior")
     
-    ctx['chess_clock_decision'] = decision_widget("Chess Clock", "clock", "chess_clock")
-    ctx['transcription_decision'] = decision_widget("Transcription", "trans", "transcription")
-    ctx['demonstratives_decision'] = decision_widget("Demonstratives", "demo", "demonstratives")
-    ctx['interpretation_decision'] = decision_widget("Interpretation", "interp", "interpretation")
+    ctx['chess_clock_decision'] = decision_widget("Chess Clock", "clock", "chess_clock", "chess_clock")
+    ctx['transcription_decision'] = decision_widget("Transcription", "trans", "transcription", "transcription")
+    ctx['demonstratives_decision'] = decision_widget("Demonstratives", "demo", "demonstratives", "demonstratives")
+    ctx['interpretation_decision'] = decision_widget("Interpretation", "interp", "interpretation", "interpretation")
 
 # --- TAB 5: COSTS ---
 with t5:
     st.header("Costs & Award")
     ctx['cost_allocation_decision'] = decision_widget("Cost Principle", "cost", "cost_allocation", "cost_alloc")
-    ctx['counsel_fee_cap_decision'] = decision_widget("Fee Caps", "fees", "counsel_fees")
-    ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int_cost", "internal_costs")
-    ctx['deposit_structure_decision'] = decision_widget("Deposits", "dep", "deposits")
+    ctx['counsel_fee_cap_decision'] = decision_widget("Fee Caps", "fees", "counsel_fees", "counsel_fees")
+    ctx['internal_costs_decision'] = decision_widget("Internal Costs", "int_cost", "internal_costs", "internal_costs")
+    ctx['deposit_structure_decision'] = decision_widget("Deposits", "dep", "deposits", "deposits")
     
     st.divider()
     ctx['award_currency_decision'] = decision_widget("Currency", "curr", "currency", "currency")
-    ctx['interest_decision'] = decision_widget("Interest", "interest_rate", "interest")
+    ctx['interest_decision'] = decision_widget("Interest", "interest_rate", "interest", "interest")
     ctx['signature_format_decision'] = decision_widget("Signature", "sign", "sign_award", "sign_award")
-    ctx['publication_decision'] = decision_widget("Publication", "pub", "publication")
+    ctx['publication_decision'] = decision_widget("Publication", "pub", "publication", "publication")
 
 # --- TAB 6: MISC ---
 with t6:
     st.header("Misc & Logistics")
-    ctx['funding_disclosure_clause'] = decision_widget("TPF Disclosure", "fund", "funding")
-    ctx['ai_guidelines_clause'] = decision_widget("AI Guidelines", "ai", "ai_guidelines")
-    ctx['green_protocols_clause'] = decision_widget("Green Protocols", "green", "sustainability")
-    ctx['disability_clause'] = decision_widget("Accessibility", "dis", "disability")
-    ctx['gdpr_clause'] = decision_widget("GDPR", "gdpr", "gdpr")
+    ctx['funding_disclosure_clause'] = decision_widget("TPF Disclosure", "fund", "funding", "funding")
+    ctx['ai_guidelines_clause'] = decision_widget("AI Guidelines", "ai", "ai_guidelines", "ai_guidelines")
+    ctx['green_protocols_clause'] = decision_widget("Green Protocols", "green", "sustainability", "green_protocols")
+    ctx['disability_clause'] = decision_widget("Accessibility", "dis", "disability", "disability")
+    ctx['gdpr_clause'] = decision_widget("GDPR", "gdpr", "gdpr", "gdpr")
     
     st.subheader("Document Control & Deadlines")
     col_1, col_2 = st.columns(2)
@@ -359,12 +441,10 @@ c_gen, c_sync = st.columns([1, 4])
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
         try:
-            # We look for the 'FINAL' file (generated by fix_template.py)
+            # Look for the template
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
-                target_file = "template_po1_READY.docx"
-                if not os.path.exists(target_file):
-                    target_file = "template_po1.docx" # Fallback
+                target_file = "template_po1.docx" # Fallback
 
             doc = DocxTemplate(target_file)
             doc.render(ctx)
@@ -381,12 +461,12 @@ with c_gen:
 with c_sync:
     if st.button("🔄 Sync Timetable to Phase 4"):
         events = []
-        for _, row in st.session_state.timetable_df.iterrows():
+        for _, row in edited_df.iterrows():
             events.append({
                 "id": f"evt_{row['Step']}",
-                "event": row['Procedural requirements'], # Mapped from new column name
+                "event": row['Procedural requirements'],
                 "current_date": str(row['Date']),
-                "owner": row['Responsible Party'],       # Mapped from new column name
+                "owner": row['Responsible Party'],
                 "status": "Upcoming",
                 "logistics": row['Notes']
             })
