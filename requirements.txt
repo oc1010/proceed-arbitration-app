@@ -4,3 +4,4 @@ plotly
 docxtpl
 python-docx
 requests
+docxcompose
