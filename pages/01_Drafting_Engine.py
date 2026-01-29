@@ -25,13 +25,10 @@ c_p1 = p1.get('claimant', {})
 def clean_answer(raw_text):
     """
     Returns ONLY the sentence content. 
-    Removes '**Option A:**' and any bold markers so it fits into legal prose.
+    Removes '**Option A:**' and any bold markers.
     """
     if not raw_text or raw_text == "Pending": return ""
-    # Remove markdown bold/italic markers
     text = raw_text.replace("**", "").replace("*", "")
-    
-    # If it starts with "Option X:", split it.
     if "Option " in text and ":" in text:
         parts = text.split(":", 1)
         if len(parts) > 1:
@@ -43,14 +40,14 @@ def get_legal_text(key, raw_answer):
     clean = clean_answer(raw_answer)
     if key in LIB:
         for option_key, legal_clause in LIB[key].items():
-            # Check for keyword match or loose content match
+            # Check for keyword match ("Option A") or content match
             if option_key in raw_answer or clean in legal_clause:
                 return legal_clause
     return clean
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
     """
-    Visual widget that returns clean legal text for the document.
+    Widget that returns ONLY the clause text, no labels.
     """
     with st.container():
         c_top, c_chk = st.columns([4, 1])
@@ -60,21 +57,19 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         
         if not is_included:
             st.divider()
-            return "" # Returns empty string to template (clause disappears)
+            return "" 
 
         if help_note: st.caption(help_note)
         
         c_ans = claimant.get(key_in_db, "Pending")
         r_ans = respondent.get(key_in_db, "Pending")
         
-        # Display Cleaned Answers
         cols = st.columns([1, 1, 2])
         with cols[0]:
             st.info(f"👤 **Claimant:**\n\n{clean_answer(c_ans)}")
         with cols[1]:
             st.warning(f"👤 **Respondent:**\n\n{clean_answer(r_ans)}")
         
-        # Determine Default Text
         if lib_key:
             suggested_text = get_legal_text(lib_key, c_ans)
         else:
@@ -88,7 +83,7 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
         st.divider()
         return val
 
-# --- 3. CLAUSE LIBRARIES ---
+# --- 3. CLAUSE LIBRARIES (Full Professional Sentences) ---
 LIB = {
     "bifurcation": {
         "Option A": "The Tribunal shall hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
@@ -102,15 +97,32 @@ LIB = {
         "Option A": "The Parties shall submit written submissions in the Memorial Style (simultaneous exchange of evidence).",
         "Option B": "The Parties shall submit written submissions in the Pleading Style (evidence follows disclosure)."
     },
+    "page_limits": {
+        "Option A": "There are no specific page limits for submissions. The Parties are to exercise reasonable discretion.",
+        "Option B": "Strict page limits shall apply to all written submissions.",
+        "Option C": "Page limits shall apply to the legal argument sections only."
+    },
+    "last_submission": {
+        "Option A": "The 'Last Submission' triggering the reporting period is defined as the final Post-Hearing Brief on the merits.",
+        "Option B": "The 'Last Submission' is defined as the very last filing in the arbitration, including Submissions on Costs."
+    },
     "doc_prod": {
         "Option A": "The Tribunal shall be bound by the IBA Rules on the Taking of Evidence (2020).",
         "Option B": "The Tribunal shall be guided by the IBA Rules on the Taking of Evidence (2020).",
         "Option C": "The Tribunal shall apply the general evidentiary powers under the LCIA Rules."
     },
     "limits": {
-        "Option A": "Requests shall be subject to the standard of relevance and materiality in the IBA Rules.",
-        "Option B": "Requests are capped at 20 per party.",
+        "Option A": "Document requests shall be subject to the standard of relevance and materiality in the IBA Rules.",
+        "Option B": "Document requests shall be capped at a maximum number to control costs.",
         "Option C": "No document production shall take place."
+    },
+    "privilege_logs": {
+        "Option A": "Parties withholding documents on grounds of privilege must produce a detailed privilege log.",
+        "Option B": "Privilege logs are not required unless specifically ordered by the Tribunal following a dispute."
+    },
+    "witness_exam": {
+        "Option A": "Witness statements shall stand as evidence-in-chief. Direct examination at the hearing is limited.",
+        "Option B": "Witnesses may be subject to full direct examination at the hearing."
     },
     "venue": {
         "At Seat": "The Oral Hearing shall be held physically at the Seat of Arbitration.",
@@ -124,17 +136,21 @@ LIB = {
     "currency": {
         "Option A": "The Award shall be expressed in the currency of the contract.",
         "Option B": "The Award shall be expressed in the currency in which costs were incurred."
+    },
+    "sign_award": {
+        "Option A": "The Parties agree that the Tribunal may sign the Award electronically.",
+        "Option B": "The Parties require the Award to be signed in 'wet ink' (hard copy)."
     }
 }
 
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
-# Initialize Timetable State
+# Initialize Timetable State with NEW COLUMN NAMES
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
-        {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Party": "Claimant", "Action": "Statement of Case", "Notes": "Incl. Witness Statements"},
-        {"Step": 2, "Date": date.today() + timedelta(weeks=8), "Party": "Respondent", "Action": "Statement of Defence", "Notes": "Incl. Witness Statements"},
+        {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
+        {"Step": 2, "Date": date.today() + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural requirements": "Statement of Defence", "Notes": "Incl. Witness Statements"},
     ])
 
 t1, t2, t3, t4, t5, t6 = st.tabs(["1. General", "2. Timetable", "3. Evidence", "4. Hearing", "5. Costs", "6. Misc & Logistics"])
@@ -158,7 +174,6 @@ with t1:
         ctx['respondent_rep_1'] = c4.text_input("Respondent Rep 1", "Mr. John Smith")
         ctx['respondent_rep_2'] = c4.text_input("Respondent Rep 2", "")
         
-        # Populate contact details (defaulting if empty to prevent template errors)
         ctx['Contact_details_of_Claimant'] = "Claimant Address"
         ctx['Contact_details_of_Respondent'] = "Respondent Address"
         ctx['Contact_details_of_Claimant_Representative'] = "counsel@claimant.com"
@@ -184,9 +199,8 @@ with t1:
 # --- TAB 2: TIMETABLE ---
 with t2:
     st.header("📅 Procedural Timetable")
-    st.info("Configure the steps below. The app will generate a formal table in the Word Document.")
+    st.info("Configure the steps below. The app will generate a formal table.")
     
-    # A. PRESET GENERATOR
     col_preset, col_act = st.columns([3, 1])
     preset = col_preset.radio("Load Preset Template:", ["Memorial Style (Front Loaded)", "Pleading Style (Sequential)"], horizontal=True)
     
@@ -194,51 +208,53 @@ with t2:
         base = date.today()
         if "Memorial" in preset:
             data = [
-                {"Step": 1, "Date": base + timedelta(weeks=4), "Party": "Claimant", "Action": "Statement of Case", "Notes": "Facts, Law, WS, Experts"},
-                {"Step": 2, "Date": base + timedelta(weeks=8), "Party": "Respondent", "Action": "Statement of Defence", "Notes": "Facts, Law, WS, Experts"},
-                {"Step": 3, "Date": base + timedelta(weeks=10), "Party": "Both", "Action": "Redfern Requests", "Notes": "Simultaneous"},
-                {"Step": 4, "Date": base + timedelta(weeks=12), "Party": "Both", "Action": "Production of Docs", "Notes": "Rolling"},
-                {"Step": 5, "Date": base + timedelta(weeks=16), "Party": "Claimant", "Action": "Reply Memorial", "Notes": "Evidence Only"},
-                {"Step": 6, "Date": base + timedelta(weeks=20), "Party": "Respondent", "Action": "Rejoinder Memorial", "Notes": "Evidence Only"},
-                {"Step": 7, "Date": base + timedelta(weeks=24), "Party": "All", "Action": "Pre-Hearing Conf.", "Notes": "Virtual"},
-                {"Step": 8, "Date": base + timedelta(weeks=28), "Party": "All", "Action": "Oral Hearing", "Notes": "10 Days"}
+                {"Step": 1, "Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Facts, Law, WS, Experts"},
+                {"Step": 2, "Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural requirements": "Statement of Defence", "Notes": "Facts, Law, WS, Experts"},
+                {"Step": 3, "Date": base + timedelta(weeks=10), "Responsible Party": "Both", "Procedural requirements": "Redfern Requests", "Notes": "Simultaneous exchange"},
+                {"Step": 4, "Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural requirements": "Production of Docs", "Notes": "Rolling"},
+                {"Step": 5, "Date": base + timedelta(weeks=16), "Responsible Party": "Claimant", "Procedural requirements": "Reply Memorial", "Notes": "Evidence Only"},
+                {"Step": 6, "Date": base + timedelta(weeks=20), "Responsible Party": "Respondent", "Procedural requirements": "Rejoinder Memorial", "Notes": "Evidence Only"},
+                {"Step": 7, "Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural requirements": "Pre-Hearing Conf.", "Notes": "Virtual"},
+                {"Step": 8, "Date": base + timedelta(weeks=28), "Responsible Party": "All", "Procedural requirements": "Oral Hearing", "Notes": "10 Days"}
             ]
         else:
             data = [
-                {"Step": 1, "Date": base + timedelta(weeks=4), "Party": "Claimant", "Action": "Statement of Case", "Notes": "Pleadings"},
-                {"Step": 2, "Date": base + timedelta(weeks=8), "Party": "Respondent", "Action": "Statement of Defence", "Notes": "Pleadings"},
-                {"Step": 3, "Date": base + timedelta(weeks=12), "Party": "Both", "Action": "Document Production", "Notes": "Standard"},
-                {"Step": 4, "Date": base + timedelta(weeks=16), "Party": "Both", "Action": "Witness Statements", "Notes": "Exchange"},
-                {"Step": 5, "Date": base + timedelta(weeks=24), "Party": "All", "Action": "Oral Hearing", "Notes": "10 Days"}
+                {"Step": 1, "Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Pleadings"},
+                {"Step": 2, "Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural requirements": "Statement of Defence", "Notes": "Pleadings"},
+                {"Step": 3, "Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural requirements": "Document Production", "Notes": "Standard"},
+                {"Step": 4, "Date": base + timedelta(weeks=16), "Responsible Party": "Both", "Procedural requirements": "Witness Statements", "Notes": "Exchange"},
+                {"Step": 5, "Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural requirements": "Oral Hearing", "Notes": "10 Days"}
             ]
         st.session_state.timetable_df = pd.DataFrame(data)
         st.rerun()
 
-    # B. EDITOR
+    # EDITOR with KEY to prevent refreshing
     edited_df = st.data_editor(
         st.session_state.timetable_df,
+        key="timetable_editor", 
         num_rows="dynamic",
         use_container_width=True,
         column_config={
             "Step": st.column_config.NumberColumn(width="small"),
             "Date": st.column_config.DateColumn(format="DD MMM YYYY"),
-            "Party": st.column_config.SelectboxColumn(options=["Claimant", "Respondent", "Both", "Tribunal", "All"]),
-            "Action": st.column_config.TextColumn(width="large"),
+            "Responsible Party": st.column_config.SelectboxColumn(options=["Claimant", "Respondent", "Both", "Tribunal", "All"]),
+            "Procedural requirements": st.column_config.TextColumn(width="large"),
             "Notes": st.column_config.TextColumn(width="medium")
         }
     )
+    
+    # Update Session State manually isn't strictly needed with 'key' but good for safety if we use it elsewhere
     st.session_state.timetable_df = edited_df
     
-    # C. PREPARE DATA FOR WORD (List of Dicts)
-    # This list is passed to the loop in the Word template ( {% tr for r in timetable_rows %} )
+    # Generate List for Word Table
     timetable_rows = []
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
         timetable_rows.append({
             "step": row['Step'],
             "date": d_str,
-            "party": row['Party'],
-            "action": row['Action'],
+            "party": row['Responsible Party'],
+            "action": row['Procedural requirements'],
             "notes": row['Notes']
         })
     ctx['timetable_rows'] = timetable_rows
@@ -249,24 +265,26 @@ with t2:
 with t3:
     st.header("Evidence")
     
+    # UPDATED PLATFORM PROTOCOL TEXT
     plat_choice = claimant.get("platform", "Pending")
-    PROCEED_PROTOCOL = "The Parties and the Arbitral Tribunal shall use the PROCEED platform for all filings and the procedural calendar."
+    PROCEED_PROTOCOL = 'The Parties and the Arbitral Tribunal shall use the PROCEED platform ("Platform") for all filings and the procedural calendar.'
     EMAIL_PROTOCOL = "The Parties shall conduct case management via email."
+    
     default_plat = PROCEED_PROTOCOL if "PROCEED" in str(plat_choice) else EMAIL_PROTOCOL
     ctx['platform_usage_clause'] = decision_widget("Platform Usage Protocol", "plat", "platform", default_text=default_plat)
 
     ctx['submission_style_decision'] = decision_widget("Submission Style", "style", "style", "style")
-    ctx['page_limits_decision'] = decision_widget("Page Limits", "pg", "limits_submission")
-    ctx['last_submission_definition'] = decision_widget("Last Submission Def.", "last", "last_submission")
+    ctx['page_limits_decision'] = decision_widget("Page Limits", "pg", "limits_submission", "page_limits")
+    ctx['last_submission_definition'] = decision_widget("Last Submission Def.", "last", "last_submission", "last_submission")
     
     st.divider()
     ctx['evidence_rules_decision'] = decision_widget("IBA Rules", "iba", "doc_prod", "doc_prod")
     ctx['doc_prod_limits_decision'] = decision_widget("Doc Prod Limits", "lim", "limits", "limits")
     ctx['privilege_standard_decision'] = decision_widget("Privilege Standard", "priv", "privilege_std")
-    ctx['privilege_logs_decision'] = decision_widget("Privilege Logs", "logs", "privilege_logs")
+    ctx['privilege_logs_decision'] = decision_widget("Privilege Logs", "logs", "privilege_logs", "privilege_logs")
     
     st.subheader("Witnesses & Experts")
-    ctx['witness_exam_scope_decision'] = decision_widget("Witness Exam Scope", "wit", "witness_exam")
+    ctx['witness_exam_scope_decision'] = decision_widget("Witness Exam Scope", "wit", "witness_exam", "witness_exam")
     ctx['expert_meeting_decision'] = decision_widget("Expert Meetings", "exp_meet", "expert_meeting")
     ctx['expert_hottubing_decision'] = decision_widget("Expert Hot-Tubbing", "exp_tub", "expert_hot_tub")
 
@@ -341,10 +359,12 @@ c_gen, c_sync = st.columns([1, 4])
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
         try:
-            # Looks for the FINAL file
+            # We look for the 'FINAL' file (generated by fix_template.py)
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
-                target_file = "template_po1.docx" # Fallback
+                target_file = "template_po1_READY.docx"
+                if not os.path.exists(target_file):
+                    target_file = "template_po1.docx" # Fallback
 
             doc = DocxTemplate(target_file)
             doc.render(ctx)
@@ -364,9 +384,9 @@ with c_sync:
         for _, row in st.session_state.timetable_df.iterrows():
             events.append({
                 "id": f"evt_{row['Step']}",
-                "event": row['Action'],
+                "event": row['Procedural requirements'], # Mapped from new column name
                 "current_date": str(row['Date']),
-                "owner": row['Party'],
+                "owner": row['Responsible Party'],       # Mapped from new column name
                 "status": "Upcoming",
                 "logistics": row['Notes']
             })
