@@ -1,5 +1,6 @@
 import streamlit as st
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, RichText
+from docx.shared import Inches, Pt
 from io import BytesIO
 from datetime import date, timedelta
 import pandas as pd
@@ -33,7 +34,6 @@ def clean_answer(raw_text):
     return text.strip()
 
 def update_clause_text(var_name, lib_key):
-    """Callback: Updates the text area when radio button changes."""
     radio_key = f"rad_{var_name}"
     text_key = f"in_{var_name}"
     if radio_key in st.session_state:
@@ -326,19 +326,51 @@ with t2:
         }
     )
     
-    # --- DYNAMIC TABLE POPULATION ---
-    # This list is what the SMART template expects
-    timetable_rows = []
+    # --- SUBDOC TABLE GENERATION (The Fix) ---
+    # We generate the table object purely in Python code, ensuring perfect formatting.
+    # This avoids Jinja2 loop syntax entirely inside the Word file.
+    
+    # We need a dummy doc to create the Subdoc
+    temp_doc = DocxTemplate("template_po1_SUBDOC.docx") 
+    sd = temp_doc.new_subdoc()
+    
+    # Create the table in the Subdoc
+    table = sd.add_table(rows=1, cols=5)
+    table.style = 'Table Grid'
+    table.autofit = False
+    
+    # Set fixed column widths (in Inches) for professional look
+    widths = [0.5, 1.2, 1.2, 2.0, 1.6] # Total ~6.5 inches
+    
+    # Header Row
+    hdr_cells = table.rows[0].cells
+    headers = ["Step", "Date", "Responsible Party", "Procedural Requirements", "Notes"]
+    for i, text in enumerate(headers):
+        hdr_cells[i].text = text
+        hdr_cells[i].width = Inches(widths[i])
+        # Make bold (simplest way in subdoc)
+        for p in hdr_cells[i].paragraphs:
+            for r in p.runs:
+                r.bold = True
+    
+    # Data Rows
     for _, row in edited_df.iterrows():
         d_str = row['Date'].strftime("%d %B %Y") if isinstance(row['Date'], date) else str(row['Date'])
-        timetable_rows.append({
-            "step": row['Step'],
-            "date": d_str,
-            "party": row['Responsible Party'],       
-            "action": row['Procedural Requirements'], 
-            "notes": row['Notes']
-        })
-    ctx['timetable_rows'] = timetable_rows
+        
+        # Add new row
+        new_row = table.add_row().cells
+        new_row[0].text = str(row['Step'])
+        new_row[1].text = d_str
+        new_row[2].text = row['Responsible Party']
+        new_row[3].text = row['Procedural Requirements']
+        new_row[4].text = row['Notes']
+        
+        # Apply Widths to new row cells
+        for i, width in enumerate(widths):
+            new_row[i].width = Inches(width)
+
+    # Pass the subdoc to the context
+    ctx['dynamic_table'] = sd
 
     ctx['mediation_window_clause'] = decision_widget("Mediation Window", "med", "mediation", "mediation")
 
@@ -439,31 +471,25 @@ with c_gen:
                 ctx[key] = "[Not Selected]"
 
         try:
-            # ONLY use the Smart Template (prevents using old broken ones)
-            target_file = "template_po1_SMART.docx"
+            target_file = "template_po1_SUBDOC.docx"
             
             if not os.path.exists(target_file):
-                # Fallback check
-                if os.path.exists("template_po1_FINAL.docx"):
-                    target_file = "template_po1_FINAL.docx"
-                else:
-                    st.error(f"❌ Error: 'template_po1_SMART.docx' not found. Please run the fixer script locally and upload it.")
-                    st.stop()
-
-            doc = DocxTemplate(target_file)
-            doc.render(ctx)
-            
-            buf = BytesIO()
-            doc.save(buf)
-            buf.seek(0)
-            
-            st.download_button(
-                label=f"📥 Download PO1 (Using {target_file})", 
-                data=buf, 
-                file_name="Procedural_Order_1.docx", 
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
-            st.success("Draft Generated Successfully!")
+                st.error(f"❌ Critical Error: '{target_file}' not found! You MUST run 'setup_subdoc_template.py' locally and upload the file to GitHub.")
+            else:
+                doc = DocxTemplate(target_file)
+                doc.render(ctx)
+                
+                buf = BytesIO()
+                doc.save(buf)
+                buf.seek(0)
+                
+                st.download_button(
+                    label="📥 Download PO1", 
+                    data=buf, 
+                    file_name="Procedural_Order_1.docx", 
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                st.success(f"Draft Generated using {target_file}!")
                 
         except Exception as e:
             st.error("An error occurred during generation:")
