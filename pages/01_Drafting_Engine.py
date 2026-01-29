@@ -37,13 +37,12 @@ def update_clause_text(var_name, lib_key):
     radio_key = f"rad_{var_name}"
     text_key = f"in_{var_name}"
     
-    # Get the selected label (e.g. "Option A (Memorial)")
+    # Get the selected label
     if radio_key in st.session_state:
         selected_label = st.session_state[radio_key]
-        # Fetch the full text from LIB
+        # Fetch full text
         if lib_key in LIB and selected_label in LIB[lib_key]:
             new_text = LIB[lib_key][selected_label]
-            # Force update the text area in session state
             st.session_state[text_key] = new_text
 
 def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", help_note=""):
@@ -51,16 +50,14 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
     Advanced Widget: Toggle options -> Instantly update text.
     """
     with st.container():
-        # Header + Checkbox
         c_top, c_chk = st.columns([4, 1])
         c_top.markdown(f"**{label}**")
         is_included = c_chk.checkbox("Include?", value=True, key=f"chk_{var_name}")
         
         if not is_included:
             st.divider()
-            return "" 
+            return "" # Returns empty string if unchecked
 
-        # Display Parties' Positions
         c_ans = claimant.get(key_in_db, "Pending")
         r_ans = respondent.get(key_in_db, "Pending")
         
@@ -71,23 +68,22 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
             st.warning(f"👤 **Respondent:**\n\n{clean_answer(r_ans)}")
         
         with cols[2]:
-            # -- SELECTION LOGIC --
-            # 1. Radio Button (Trigger Callback on Change)
+            # Selection Logic
             if lib_key and lib_key in LIB:
                 options_dict = LIB[lib_key]
                 options_list = list(options_dict.keys())
                 
-                # Check for Stale State (if LIB keys changed)
+                # Cleanup Stale State
                 radio_key = f"rad_{var_name}"
                 if radio_key in st.session_state:
                     if st.session_state[radio_key] not in options_list:
                         del st.session_state[radio_key]
 
-                # Determine Default Index based on Claimant match (run once if key missing)
+                # Determine Default
                 default_idx = 0
                 if radio_key not in st.session_state:
                     for i, k in enumerate(options_list):
-                        if k.split("(")[0].strip() in c_ans: # Match "Option A"
+                        if k.split("(")[0].strip() in c_ans:
                             default_idx = i
                             break
                 
@@ -98,22 +94,19 @@ def decision_widget(label, var_name, key_in_db, lib_key=None, default_text="", h
                     key=radio_key,
                     horizontal=True,
                     label_visibility="collapsed",
-                    on_change=update_clause_text, # <--- CRITICAL FIX
+                    on_change=update_clause_text,
                     args=(var_name, lib_key)
                 )
                 
-                # Initialize text area content if missing
+                # Initialize text area
                 text_key = f"in_{var_name}"
                 if text_key not in st.session_state:
-                    # If radio exists, get its value, else get default
                     current_radio = st.session_state.get(radio_key, options_list[default_idx])
                     st.session_state[text_key] = options_dict[current_radio]
 
-            # Fallback if no LIB entry and no default provided
             elif f"in_{var_name}" not in st.session_state:
                 st.session_state[f"in_{var_name}"] = default_text if default_text else clean_answer(c_ans)
 
-            # 2. The Editable Text Area
             final_val = st.text_area(
                 "Final Clause Content", 
                 key=f"in_{var_name}",
@@ -281,7 +274,6 @@ LIB = {
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
-# --- STABLE TIMETABLE INIT ---
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
         {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
@@ -362,7 +354,6 @@ with t2:
         st.session_state.timetable_df = pd.DataFrame(data)
         st.rerun()
 
-    # --- EDITOR (Pinned with Key) ---
     edited_df = st.data_editor(
         st.session_state.timetable_df,
         key="timetable_editor", 
@@ -384,8 +375,8 @@ with t2:
         timetable_rows.append({
             "step": row['Step'],
             "date": d_str,
-            "party": row['Responsible Party'],       # Mapped
-            "action": row['Procedural requirements'], # Mapped
+            "party": row['Responsible Party'],       
+            "action": row['Procedural requirements'], 
             "notes": row['Notes']
         })
     ctx['timetable_rows'] = timetable_rows
@@ -482,10 +473,38 @@ c_gen, c_sync = st.columns([1, 4])
 
 with c_gen:
     if st.button("🚀 Generate PO1", type="primary"):
+        # SAFETY NET: Fill missing keys with placeholders
+        for key in [
+            'claimant_rep_1', 'claimant_rep_2', 
+            'respondent_rep_1', 'respondent_rep_2', 
+            'bifurcation_decision', 'consolidation_decision',
+            'tribunal_secretary_appointment', 'tribunal_secretary_fees',
+            'platform_usage_clause', 'mediation_window_clause',
+            'cost_allocation_decision', 'counsel_fee_cap_decision',
+            'internal_costs_decision', 'deposit_structure_decision',
+            'award_currency_decision', 'interest_decision',
+            'signature_format_decision', 'publication_decision',
+            'evidence_rules_decision', 'doc_prod_limits_decision',
+            'hearing_venue_decision', 'chess_clock_decision',
+            'transcription_decision', 'deadline_timezone',
+            'time_abbreviations', 'time_confirm_contact',
+            'time_notify_counsel', 'time_shred_docs',
+            'time_produce_docs', 'max_filename_len',
+            'time_hearing_bundle', 'time_submit_exhibits',
+            'hearing_hours', 'ai_guidelines_clause',
+            'green_protocols_clause', 'disability_clause',
+            'gdpr_clause'
+        ]:
+            if key not in ctx or ctx[key] is None:
+                ctx[key] = "" # Default to empty string instead of crashing
+
         try:
+            # Look for the FINAL file
             target_file = "template_po1_FINAL.docx"
             if not os.path.exists(target_file):
-                target_file = "template_po1.docx" # Fallback
+                target_file = "template_po1_READY.docx"
+                if not os.path.exists(target_file):
+                    target_file = "template_po1.docx" # Fallback
 
             doc = DocxTemplate(target_file)
             doc.render(ctx)
