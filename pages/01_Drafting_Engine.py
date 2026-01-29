@@ -247,10 +247,11 @@ LIB = {
 # --- 4. APP UI ---
 st.title("📝 Procedural Order No. 1 - Drafting Cockpit")
 
+# --- INITIALIZE TABLE with requested Columns (Step column is data-only, not shown) ---
 if "timetable_df" not in st.session_state:
     st.session_state.timetable_df = pd.DataFrame([
-        {"Step": 1, "Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
-        {"Step": 2, "Date": date.today() + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Incl. Witness Statements"},
+        {"Date": date.today() + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Incl. Witness Statements"},
+        {"Date": date.today() + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Incl. Witness Statements"},
     ])
 
 t1, t2, t3, t4, t5, t6 = st.tabs(["1. General", "2. Timetable", "3. Evidence", "4. Hearing", "5. Costs", "6. Misc & Logistics"])
@@ -294,29 +295,31 @@ with t1:
 
 with t2:
     st.header("📅 Procedural Timetable")
-    st.info("Configure the steps below. Rows will automatically expand in the generated document.")
+    st.info("Configure the steps below. The 'Step No.' is added automatically in the final document.")
+    st.caption("ℹ️ To DELETE a row: Select the empty checkbox on the far left of the row and press 'Delete' on your keyboard.")
+    
     col_preset, col_act = st.columns([3, 1])
     preset = col_preset.radio("Load Preset Template:", ["Memorial Style (Front Loaded)", "Pleading Style (Sequential)"], horizontal=True)
     if col_act.button("🔄 Apply Preset"):
         base = date.today()
         if "Memorial" in preset:
             data = [
-                {"Step": 1, "Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Facts, Law, WS, Experts"},
-                {"Step": 2, "Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Facts, Law, WS, Experts"},
-                {"Step": 3, "Date": base + timedelta(weeks=10), "Responsible Party": "Both", "Procedural Requirements": "Redfern Requests", "Notes": "Simultaneous exchange"},
-                {"Step": 4, "Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural Requirements": "Production of Docs", "Notes": "Rolling"},
-                {"Step": 5, "Date": base + timedelta(weeks=16), "Responsible Party": "Claimant", "Procedural Requirements": "Reply Memorial", "Notes": "Evidence Only"},
-                {"Step": 6, "Date": base + timedelta(weeks=20), "Responsible Party": "Respondent", "Procedural Requirements": "Rejoinder Memorial", "Notes": "Evidence Only"},
-                {"Step": 7, "Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural Requirements": "Pre-Hearing Conf.", "Notes": "Virtual"},
-                {"Step": 8, "Date": base + timedelta(weeks=28), "Responsible Party": "All", "Procedural Requirements": "Oral Hearing", "Notes": "10 Days"}
+                {"Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Facts, Law, WS, Experts"},
+                {"Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Facts, Law, WS, Experts"},
+                {"Date": base + timedelta(weeks=10), "Responsible Party": "Both", "Procedural Requirements": "Redfern Requests", "Notes": "Simultaneous exchange"},
+                {"Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural Requirements": "Production of Docs", "Notes": "Rolling"},
+                {"Date": base + timedelta(weeks=16), "Responsible Party": "Claimant", "Procedural Requirements": "Reply Memorial", "Notes": "Evidence Only"},
+                {"Date": base + timedelta(weeks=20), "Responsible Party": "Respondent", "Procedural Requirements": "Rejoinder Memorial", "Notes": "Evidence Only"},
+                {"Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural Requirements": "Pre-Hearing Conf.", "Notes": "Virtual"},
+                {"Date": base + timedelta(weeks=28), "Responsible Party": "All", "Procedural Requirements": "Oral Hearing", "Notes": "10 Days"}
             ]
         else:
             data = [
-                {"Step": 1, "Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Pleadings"},
-                {"Step": 2, "Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Pleadings"},
-                {"Step": 3, "Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural Requirements": "Document Production", "Notes": "Standard"},
-                {"Step": 4, "Date": base + timedelta(weeks=16), "Responsible Party": "Both", "Procedural Requirements": "Witness Statements", "Notes": "Exchange"},
-                {"Step": 5, "Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural Requirements": "Oral Hearing", "Notes": "10 Days"}
+                {"Date": base + timedelta(weeks=4), "Responsible Party": "Claimant", "Procedural Requirements": "Statement of Case", "Notes": "Pleadings"},
+                {"Date": base + timedelta(weeks=8), "Responsible Party": "Respondent", "Procedural Requirements": "Statement of Defence", "Notes": "Pleadings"},
+                {"Date": base + timedelta(weeks=12), "Responsible Party": "Both", "Procedural Requirements": "Document Production", "Notes": "Standard"},
+                {"Date": base + timedelta(weeks=16), "Responsible Party": "Both", "Procedural Requirements": "Witness Statements", "Notes": "Exchange"},
+                {"Date": base + timedelta(weeks=24), "Responsible Party": "All", "Procedural Requirements": "Oral Hearing", "Notes": "10 Days"}
             ]
         st.session_state.timetable_df = pd.DataFrame(data)
         st.rerun()
@@ -327,7 +330,6 @@ with t2:
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "Step": st.column_config.NumberColumn(width="small"),
             "Date": st.column_config.DateColumn(format="DD MMM YYYY"),
             "Responsible Party": st.column_config.SelectboxColumn(options=["Claimant", "Respondent", "Both", "Tribunal", "All"]),
             "Procedural Requirements": st.column_config.TextColumn(width="large"),
@@ -443,13 +445,11 @@ with c_gen:
                 # --- SUBDOC TABLE GENERATION (Robust & Clean) ---
                 sd = doc.new_subdoc()
                 
-                # Create table with fixed dimensions
                 table = sd.add_table(rows=1, cols=5)
                 table.style = 'Table Grid'
                 table.autofit = False
                 
-                # Column Widths (Inches) - Total approx 6.5
-                # Step, Date, Party, Action, Notes
+                # Column Widths
                 widths = [0.5, 1.2, 1.2, 2.0, 1.6]
                 
                 # HEADERS
@@ -458,25 +458,21 @@ with c_gen:
                 for i, text in enumerate(headers):
                     hdr_cells[i].text = text
                     hdr_cells[i].width = Inches(widths[i])
-                    # Make Bold
                     for p in hdr_cells[i].paragraphs:
                         for r in p.runs:
                             r.bold = True
                             r.font.size = Pt(10)
 
-                # DATA ROWS
-                # enumerate(edited_df.iterrows()) gives i, (index, row)
+                # DATA ROWS - Auto Numbering & Safe String
                 for i, (index, row) in enumerate(edited_df.iterrows()):
-                    # Auto-number step (i+1)
+                    # AUTO-NUMBERING: i+1 is calculated automatically based on row position
                     step_num = str(i + 1)
                     
-                    # Handle Date
                     if isinstance(row['Date'], date):
                         d_str = row['Date'].strftime("%d %B %Y")
                     else:
                         d_str = safe_str(row['Date'])
 
-                    # Add new row
                     new_row = table.add_row().cells
                     new_row[0].text = step_num
                     new_row[1].text = d_str
@@ -484,14 +480,12 @@ with c_gen:
                     new_row[3].text = safe_str(row['Procedural Requirements'])
                     new_row[4].text = safe_str(row['Notes'])
                     
-                    # Apply Formatting
                     for j, width in enumerate(widths):
                         new_row[j].width = Inches(width)
                         for p in new_row[j].paragraphs:
                             for r in p.runs:
                                 r.font.size = Pt(10)
 
-                # Add subdoc to context
                 ctx['dynamic_table'] = sd
 
                 doc.render(ctx)
@@ -515,9 +509,9 @@ with c_gen:
 with c_sync:
     if st.button("🔄 Sync Timetable to Phase 4"):
         events = []
-        for _, row in edited_df.iterrows():
+        for i, (index, row) in enumerate(edited_df.iterrows()):
             events.append({
-                "id": f"evt_{row['Step']}",
+                "id": f"evt_{i+1}",
                 "event": row['Procedural Requirements'],
                 "current_date": str(row['Date']),
                 "owner": row['Responsible Party'],
