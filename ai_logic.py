@@ -4,17 +4,18 @@ import vertexai
 from vertexai.generative_models import GenerativeModel
 from google.oauth2 import service_account
 from google.api_core.exceptions import NotFound, Forbidden, ServiceUnavailable, InvalidArgument
+from docx import Document
+from docx.shared import Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from io import BytesIO
 from db import load_complex_data, load_full_config
 
 # ==============================================================================
-# 1. DETERMINISTIC CALCULATION ENGINE (Hard Math - No Hallucinations)
+# 1. HARD MATH ENGINE (Deterministic - No Hallucinations)
 # ==============================================================================
 
 def calculate_doc_prod_score(role):
-    """
-    Calculates the 'Proportionality Score' strictly via math.
-    Source: Cost Allocation Tool (AI)
-    """
+    [cite_start]"""Calculates Proportionality Score (Rejection Rate) [cite: 49-51]."""
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     threshold = meta.get('cost_settings', {}).get('doc_prod_threshold', 75.0)
@@ -31,10 +32,7 @@ def calculate_doc_prod_score(role):
     return ratio, penalty_triggered
 
 def calculate_delay_penalties(role):
-    """
-    Calculates delay deductions based on 'Approved' extension requests.
-    Source: Cost Allocation Tool (AI)
-    """
+    [cite_start]"""Calculates Delay Deduction (0.5% per day) [cite: 59-61]."""
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     rate = meta.get('cost_settings', {}).get('delay_penalty_rate', 0.5)
@@ -45,7 +43,7 @@ def calculate_delay_penalties(role):
 
     for d in delays_log:
         if d.get('requestor') == role and d.get('status') == 'Approved':
-            # For demo purposes, we estimate typical delay lengths if precise days aren't logged
+            # Use actual days if available, else estimate for demo
             days = 14 if "Statement" in d['event'] else 7 
             penalty = days * rate
             total_deduction_percent += penalty
@@ -54,14 +52,10 @@ def calculate_delay_penalties(role):
     return total_deduction_percent, detailed_log
 
 def calculate_reversal_amount(offerer_role, offer_date_str):
-    """
-    Filters and sums costs incurred AFTER the specific cut-off date.
-    Source: Cost Allocation Tool (AI)
-    """
+    [cite_start]"""Calculates 'Costs Incurred After Offer'[cite: 86]."""
     data = load_complex_data()
     costs = data.get('costs', {})
     
-    # The Party who REJECTED the offer (the Opposing Party) is the one who pays
     rejecting_party = 'respondent' if offerer_role == 'claimant' else 'claimant'
     target_log = costs.get(f"{rejecting_party}_log", [])
     
@@ -73,16 +67,12 @@ def calculate_reversal_amount(offerer_role, offer_date_str):
             entry_date = datetime.strptime(entry['date'], "%Y-%m-%d").date()
             if entry_date > cutoff_date:
                 reversal_sum += float(entry['amount'])
-        except:
-            continue
+        except: continue
             
     return reversal_sum, rejecting_party
 
 def calculate_burn_rate(role):
-    """
-    Calculates average spend per day to detect inflation/reasonableness.
-    Source: Cost Allocation Tool (AI)
-    """
+    [cite_start]"""Calculates Average Daily Spend[cite: 88]."""
     data = load_complex_data()
     costs = data.get('costs', {}).get(f"{role}_log", [])
     
@@ -92,8 +82,7 @@ def calculate_burn_rate(role):
     
     dates = []
     for c in costs:
-        try:
-            dates.append(datetime.strptime(c['date'], "%Y-%m-%d"))
+        try: dates.append(datetime.strptime(c['date'], "%Y-%m-%d"))
         except: pass
             
     if not dates: return 0.0
@@ -104,10 +93,7 @@ def calculate_burn_rate(role):
     return total_spend / duration_days
 
 def check_sealed_offers(final_award_val):
-    """
-    Checks the 'Vault' for any offers higher than the Award.
-    Source: Cost Allocation Tool (AI)
-    """
+    [cite_start]"""Checks Sealed Offer Vault for Reversals [cite: 76-77]."""
     data = load_complex_data()
     offers = data.get('costs', {}).get('sealed_offers', [])
     reversal_triggers = []
@@ -129,117 +115,136 @@ def check_sealed_offers(final_award_val):
     return reversal_triggers
 
 # ==============================================================================
-# 2. AI DRAFTING LAYER (Robust Multi-Model Fallback)
+# 2. AI DRAFTING (Robust Fallback & Advisory Tone)
 # ==============================================================================
 
 def try_generate_with_fallback(prompt, project_id, credentials):
-    """
-    Attempts to generate content using a prioritized list of models.
-    Falls back sequentially if a model is 404 Not Found or 403 Forbidden.
-    """
-    
-    # PRIORITY LIST (Newest 2.5 -> 2.0 -> Legacy 1.5/1.0)
+    """Tries models in order: 2.5 -> 2.0 -> 1.5 -> 1.0"""
     models_to_try = [
-        "gemini-2.5-pro",           # Best available (June 2025 release)
-        "gemini-2.5-flash",         # Fast alternative
-        "gemini-2.0-flash-001",     # Previous stable (Feb 2025)
-        "gemini-1.5-pro-001",       # Legacy stable
-        "gemini-1.5-flash-001",     # Legacy fast
-        "gemini-1.0-pro"            # Absolute backup
+        "gemini-2.5-pro", "gemini-2.5-flash", 
+        "gemini-2.0-flash-001", 
+        "gemini-1.5-pro-001", "gemini-1.5-flash-001",
+        "gemini-1.0-pro"
     ]
     
-    last_error = None
-    
-    # Try initializing Vertex AI once
     try:
         vertexai.init(project=project_id, location="us-central1", credentials=credentials)
     except Exception as e:
         return f"**[Connection Error]** Failed to initialize Vertex AI: {e}"
 
-    # Loop through models
     for model_name in models_to_try:
         try:
             model = GenerativeModel(model_name)
             response = model.generate_content(prompt)
             return response.text
-            
-        except (NotFound, Forbidden, InvalidArgument, ServiceUnavailable) as e:
-            # Catch specific Google Cloud errors indicating model unavailability
-            last_error = f"{model_name}: {e}"
-            continue # Try the next model in the list
-            
-        except Exception as e:
-            # Catch unexpected errors
-            last_error = f"{model_name} (Unexpected): {e}"
+        except (NotFound, Forbidden, InvalidArgument, ServiceUnavailable):
             continue
-
-    # If ALL models fail
-    return f"""
-    **[System Error]** AI Generation Failed.
-    
-    Tried the following models without success:
-    {', '.join(models_to_try)}
-    
-    **Last Error:** {last_error}
-    
-    *Please check Google Cloud Console > Vertex AI > Model Garden to see which models are enabled for your project.*
-    """
+        except Exception as e:
+            return f"Error with {model_name}: {e}"
+            
+    return "**[System Error]** All AI models failed. Please check API permissions."
 
 def generate_cost_award_draft(case_id, final_award_val):
     try:
-        # A. RUN CALCULATIONS FIRST
+        # A. Gather Hard Data
         c_score, c_pen = calculate_doc_prod_score('claimant')
         r_score, r_pen = calculate_doc_prod_score('respondent')
-        
         c_delay_pct, c_log = calculate_delay_penalties('claimant')
         r_delay_pct, r_log = calculate_delay_penalties('respondent')
-        
         c_burn = calculate_burn_rate('claimant')
         r_burn = calculate_burn_rate('respondent')
-        
         reversals = check_sealed_offers(final_award_val) if final_award_val else []
         
-        # B. CONSTRUCT PROMPT (THE "JUNIOR ASSOCIATE" PERSONA)
-        # We explicitly instruct the AI to be deferential and data-driven.
+        # B. Advisory Prompt
         prompt = f"""
-        You are acting as the Tribunal Secretary preparing a DRAFT Cost Allocation Memorandum for the Sole Arbitrator in Case {case_id}.
+        Act as a TRIBUNAL SECRETARY drafting a confidential "Recommendation on Costs" for the Arbitrator in Case {case_id}.
         
-        YOUR TASK:
-        Provide a reasoned recommendation for cost allocation based SOLELY on the hard data below. 
-        Use professional, neutral legal language. 
-        Do NOT decide the case; explicitly frame conclusions as "recommendations based on the data" subject to Tribunal discretion.
+        INSTRUCTIONS:
+        1. Rely SOLELY on the HARD DATA below. Do not invent facts.
+        2. Frame all conclusions as "recommendations" subject to the Tribunal's discretion.
+        3. Be concise, professional, and data-driven.
         
-        HARD DATA FROM CASE MANAGEMENT SYSTEM:
+        HARD DATA:
         
-        1. DOCUMENT PRODUCTION CONDUCT (Proportionality Metric):
-        - Claimant: {c_score:.1f}% of requests were Denied. (Burn Rate: €{c_burn:,.2f}/day)
-        - Respondent: {r_score:.1f}% of requests were Denied. (Burn Rate: €{r_burn:,.2f}/day)
-        *Framework Rule: A rejection rate >75% is flagged as potentially excessive.*
+        [1] CONDUCT & PROPORTIONALITY (Document Production):
+        - Claimant Rejection Rate: {c_score:.1f}% (Burn Rate: €{c_burn:,.2f}/day)
+        - Respondent Rejection Rate: {r_score:.1f}% (Burn Rate: €{r_burn:,.2f}/day)
+        *Guideline: Rejection rates >75% suggest excessive requests.*
         
-        2. PROCEDURAL EFFICIENCY (Delay Penalties):
-        - Claimant: {c_delay_pct}% total deduction recommended. Details: {c_log}
-        - Respondent: {r_delay_pct}% total deduction recommended. Details: {r_log}
-        *Framework Rule: 0.5% cost deduction per 24h of non-consensual delay.*
+        [2] PROCEDURAL EFFICIENCY (Delays):
+        - Claimant Penalty: -{c_delay_pct}% recommended ({c_log})
+        - Respondent Penalty: -{r_delay_pct}% recommended ({r_log})
+        *Guideline: 0.5% deduction per day of non-consensual delay.*
         
-        3. SETTLEMENT BEHAVIOR (Sealed Offer Vault):
-        {f"- ALERT: A Sealed Offer was rejected. The Award is LESS favorable than the offer. The Rejecting Party ({reversals[0]['payer']}) should typically bear costs incurred after {reversals[0]['offer_date']} (approx €{reversals[0]['reversal_sum']:,.2f})." if reversals else "- No sealed offers triggered a reversal."}
+        [3] SETTLEMENT (Sealed Offers):
+        {f"- REVERSAL TRIGGERED: {reversals[0]['payer']} rejected a favorable offer. Recommend shifting costs incurred after {reversals[0]['offer_date']} (€{reversals[0]['reversal_sum']:,.2f})." if reversals else "- No cost reversal triggered."}
         
-        DRAFTING STRUCTURE:
-        1. **Analysis of Conduct:** Compare the parties' document production ratios and efficiency, citing the burn rates.
-        2. **Financial Implications:** Apply the specific penalties calculated above.
-        3. **Recommendation:** Summarize the net allocation (e.g., "Claimant should recover X% of costs"), subject to the Tribunal's final discretion.
+        DRAFT STRUCTURE:
+        I. Analysis of Conduct & Efficiency
+        II. Calculation of Recommended Penalties
+        III. Final Recommendation on Allocation
         """
         
-        # C. GENERATE USING FALLBACK LOGIC
         if "gcp_service_account" in st.secrets:
-            creds = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"]
-            )
-            project_id = st.secrets["gcp_service_account"]["project_id"]
-            
-            return try_generate_with_fallback(prompt, project_id, creds)
+            creds = service_account.Credentials.from_service_account_info(st.secrets["gcp_service_account"])
+            return try_generate_with_fallback(prompt, st.secrets["gcp_service_account"]["project_id"], creds)
         else:
-            return f"**[Demo Mode]** Vertex AI not connected.\n\nPrompt Context:\n{prompt}"
+            return f"**[Demo Mode]** Vertex AI Disconnected.\n\nContext:\n{prompt}"
 
     except Exception as e:
-        return f"Error during AI Generation: {e}"
+        return f"Error: {e}"
+
+# ==============================================================================
+# 3. WORD DOCUMENT GENERATOR (Professional Formatting)
+# ==============================================================================
+
+def generate_word_document(case_id, draft_text, award_val):
+    """Generates a downloadable .docx with legal formatting and disclaimers."""
+    doc = Document()
+    
+    # Styles
+    style = doc.styles['Normal']
+    style.font.name = 'Times New Roman'
+    style.font.size = Pt(12)
+    
+    # Header
+    head = doc.add_heading(f"IN THE MATTER OF ARBITRATION: {case_id}", 0)
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_paragraph("\n")
+    title = doc.add_paragraph("MEMORANDUM ON COST ALLOCATION (DRAFT)")
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.runs[0].bold = True
+    
+    # [cite_start]Red Disclaimer [cite: 14]
+    doc.add_paragraph("\n")
+    p = doc.add_paragraph()
+    run = p.add_run("--- PRIVILEGED & CONFIDENTIAL / AI ASSISTED DRAFT ---")
+    run.font.color.rgb = RGBColor(255, 0, 0)
+    run.bold = True
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    p2 = doc.add_paragraph("DISCLAIMER: This document is a preliminary analysis generated by the PROCEED Case Management System based on logged procedural data. It constitutes a recommendation only and does not represent the final decision of the Tribunal.")
+    p2.runs[0].italic = True
+    p2.runs[0].font.size = Pt(10)
+    
+    doc.add_paragraph("\n")
+    
+    # Case Context
+    doc.add_heading("I. PROCEDURAL SNAPSHOT", level=1)
+    doc.add_paragraph(f"Date: {date.today()}")
+    doc.add_paragraph(f"Principal Award Value: €{award_val:,.2f}")
+    
+    # The AI Text
+    doc.add_heading("II. DATA-DRIVEN ANALYSIS", level=1)
+    doc.add_paragraph(draft_text)
+    
+    # Signature Block
+    doc.add_paragraph("\n\n" + "_"*30)
+    doc.add_paragraph("Reviewing Arbitrator\n(Not valid until signed)")
+    
+    # Save to buffer
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
