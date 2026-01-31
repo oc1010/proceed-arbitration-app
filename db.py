@@ -40,7 +40,6 @@ bucket = get_storage_bucket()
 
 # --- 2. EMAIL HELPER ---
 def send_email_via_smtp(to_email, subject, body):
-    """Sends a single email."""
     smtp_user = st.secrets.get("ST_MAIL_USER")
     smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
     
@@ -72,18 +71,12 @@ def send_email_via_smtp(to_email, subject, body):
         return False
 
 def generate_pin():
-    """Generates a secure 6-digit PIN."""
     return ''.join(secrets.choice(string.digits) for i in range(6))
 
 # --- 3. LCIA MASTER FUNCTIONS ---
 def create_new_case(case_name, claimant_email, respondent_email, arbitrator_email):
-    """
-    1. Generates separate PINs for each party.
-    2. Sends separate emails to each party.
-    """
     case_id = f"LCIA-{int(datetime.now().timestamp())}"
     
-    # Generate Unique PINs
     pins = {
         "claimant": generate_pin(),
         "respondent": generate_pin(),
@@ -96,7 +89,7 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
             "case_name": case_name,
             "created_at": datetime.now(),
             "status": "Phase 1: Initiation",
-            "setup_pins": pins, # Storing separate PINs
+            "setup_pins": pins,
             "parties": {
                 "claimant": claimant_email.strip().lower(), 
                 "respondent": respondent_email.strip().lower(),
@@ -124,7 +117,7 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
     if db:
         db.collection("arbitrations").document(case_id).set(new_case_data)
         
-        # EMAIL 1: CLAIMANT
+        # EMAILS
         c_body = f"""
         Strictly Confidential - Claimant Access
         Case: {case_name} (ID: {case_id})
@@ -134,10 +127,8 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         
         Go to: https://proceedai.streamlit.app/
         """
-        if send_email_via_smtp(claimant_email, f"Activation: {case_name}", c_body):
-            email_count += 1
+        if send_email_via_smtp(claimant_email, f"Activation: {case_name}", c_body): email_count += 1
 
-        # EMAIL 2: RESPONDENT
         r_body = f"""
         Strictly Confidential - Respondent Access
         Case: {case_name} (ID: {case_id})
@@ -147,10 +138,8 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         
         Go to: https://proceedai.streamlit.app/
         """
-        if send_email_via_smtp(respondent_email, f"Activation: {case_name}", r_body):
-            email_count += 1
+        if send_email_via_smtp(respondent_email, f"Activation: {case_name}", r_body): email_count += 1
             
-        # EMAIL 3: ARBITRATOR (Optional)
         if arbitrator_email:
             a_body = f"""
             Strictly Confidential - Tribunal Access
@@ -161,8 +150,7 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
             
             Go to: https://proceedai.streamlit.app/
             """
-            if send_email_via_smtp(arbitrator_email, f"Appointment: {case_name}", a_body):
-                email_count += 1
+            if send_email_via_smtp(arbitrator_email, f"Appointment: {case_name}", a_body): email_count += 1
         
     return case_id, email_count
 
@@ -183,9 +171,9 @@ def get_all_cases_metadata():
 def get_active_case_id():
     return st.session_state.get('active_case_id')
 
-def activate_user_account(case_id, email, input_setup_pin, new_password):
+def activate_user_account(case_id, email, input_setup_pin, new_password, target_role):
     """
-    Registers a user by checking their SPECIFIC role PIN.
+    Registers a user. Requires Role + Email + PIN to match perfectly.
     """
     if not db: return False, "DB Error"
     
@@ -197,35 +185,31 @@ def activate_user_account(case_id, email, input_setup_pin, new_password):
     data = doc.to_dict()
     meta = data.get('meta', {})
     
-    # 1. Identify Role by Email FIRST
-    user_role = None
+    # 1. Clean Inputs
+    target_role = target_role.lower()
     input_email = email.strip().lower()
-    for role, stored_email in meta.get('parties', {}).items():
-        if stored_email == input_email:
-            user_role = role
-            break
-            
-    if not user_role:
-        return False, "This email is not authorized for this case."
-        
-    # 2. Validate the SPECIFIC PIN for this role
-    correct_pin = meta.get('setup_pins', {}).get(user_role)
-    if not correct_pin:
-        return False, "Configuration Error: No PIN generated for this role."
-        
-    if input_setup_pin != correct_pin:
+    input_pin = input_setup_pin.strip()
+    
+    # 2. Verify Email matches the selected Role
+    registered_email = meta.get('parties', {}).get(target_role, '').lower()
+    if registered_email != input_email:
+        return False, f"Email mismatch. The email you entered is not registered for the {target_role}."
+
+    # 3. Verify PIN matches the selected Role
+    correct_pin = meta.get('setup_pins', {}).get(target_role)
+    if str(input_pin) != str(correct_pin):
         return False, "Invalid Setup PIN. Please check the email sent specifically to you."
         
-    # 3. Check if already registered
-    if meta.get('credentials', {}).get(user_role):
+    # 4. Check if already registered
+    if meta.get('credentials', {}).get(target_role):
         return False, "Account already activated. Please go to Login."
         
-    # 4. Save New Password
+    # 5. Save New Password
     db.collection("arbitrations").document(case_id).update({
-        f"meta.credentials.{user_role}": new_password
+        f"meta.credentials.{target_role}": new_password
     })
     
-    return True, f"Account activated! Welcome, {user_role.title()}."
+    return True, f"Account activated! Welcome, {target_role.title()}."
 
 def login_user(case_id, email, password):
     """Logs in using PRIVATE password."""
