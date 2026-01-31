@@ -41,7 +41,7 @@ def create_new_case(case_name, claimant_email, respondent_email, access_pin="123
             "case_name": case_name,
             "created_at": datetime.now(),
             "status": "Phase 1: Initiation",
-            "access_pin": access_pin, # Simple security
+            "access_pin": access_pin,
             "parties": {"claimant": claimant_email, "respondent": respondent_email}
         },
         "phase1": [], 
@@ -64,7 +64,7 @@ def get_all_cases_metadata():
     """Fetches a lightweight list of all cases for the LCIA Dashboard."""
     if not db: return []
     try:
-        # We only get the 'meta' field to save bandwidth/money
+        # We only get the 'meta' field to save bandwidth
         docs = db.collection("arbitrations").stream()
         cases_list = []
         for doc in docs:
@@ -82,17 +82,16 @@ def get_active_case_id():
 
 def verify_case_access(case_id, pin_attempt):
     """Checks if Case ID exists and PIN matches."""
-    if not db: return False
+    if not db: return False, None
     doc = db.collection("arbitrations").document(case_id).get()
     if doc.exists:
         data = doc.to_dict()
-        # In a real app, hash the PIN. For hackathon, plain text is fine.
         stored_pin = data['meta'].get('access_pin', '')
         if stored_pin == pin_attempt:
             return True, data['meta']
     return False, None
 
-# --- 4. STANDARD DATA LOADERS (Existing) ---
+# --- 4. STANDARD DATA LOADERS ---
 def load_full_config():
     cid = get_active_case_id()
     if not cid or not db: return {}
