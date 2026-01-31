@@ -18,19 +18,19 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
     
     col1, col2 = st.columns(2)
     
-    # --- CARD 1: PARTY LOGIN ---
+    # --- BOX 1: PARTY / ARBITRATOR LOGIN ---
     with col1:
         with st.container(border=True):
-            st.subheader("🔑 Party Login")
-            st.write("Access an ongoing arbitration case.")
+            st.subheader("🔑 Access Workspace")
+            st.write("For Claimants, Respondents, and Arbitrators.")
             
             case_input = st.text_input("Case ID", placeholder="LCIA-170...")
             pin_input = st.text_input("Access PIN", type="password", placeholder="****")
-            role_input = st.selectbox("Select Role", ["Claimant", "Respondent", "Arbitrator"])
+            role_input = st.selectbox("Select Your Role", ["Claimant", "Respondent", "Arbitrator"])
             
-            if st.button("Enter Case Workspace", type="primary"):
+            if st.button("Enter Case", type="primary"):
                 if not db:
-                    st.error("Database connection failed.")
+                    st.error("Database not connected.")
                 else:
                     valid, meta = verify_case_access(case_input, pin_input)
                     if valid:
@@ -41,17 +41,16 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
                     else:
                         st.error("Invalid Case ID or PIN.")
 
-    # --- CARD 2: LCIA ADMIN LOGIN ---
+    # --- BOX 2: LCIA REGISTRAR LOGIN ---
     with col2:
         with st.container(border=True):
-            st.subheader("🏛️ LCIA Registrar")
-            st.write("Administrative Console access.")
+            st.subheader("🏛️ LCIA Admin")
+            st.write("Registrar Console Login.")
             
             admin_pass = st.text_input("Registrar Password", type="password")
             
             if st.button("Login as Registrar"):
-                # Hardcoded for Hackathon Demo
-                if admin_pass == "lcia123": 
+                if admin_pass == "lcia123": # Hackathon Password
                     st.session_state['is_lcia_admin'] = True
                     st.session_state['user_role'] = 'lcia'
                     st.rerun()
@@ -65,50 +64,58 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
 # ==============================================================================
 if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
     st.title("🏛️ LCIA Registrar Console")
-    st.write("Global overview of active arbitration matters.")
     
-    # 2A. ACTIVE CASES TABLE
-    all_cases = get_all_cases_metadata()
+    tab_list, tab_new = st.tabs(["📂 Active Cases & Management", "➕ Initiate New Proceedings"])
     
-    if all_cases:
-        st.write("### 📂 Active Cases")
-        df = pd.DataFrame(all_cases)
-        # Display clean table
-        display_df = df[['case_id', 'case_name', 'status', 'created_at']].copy()
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # --- TAB 1: LIST OF CASES (MANAGE) ---
+    with tab_list:
+        st.write("Select a case to manage questionnaires or view status.")
+        all_cases = get_all_cases_metadata()
         
-        # Selector to enter a case
-        c1, c2 = st.columns([3, 1])
-        selected_id = c1.selectbox("Select Case to Manage", [c['case_id'] for c in all_cases])
-        if c2.button("Manage Selected Case"):
-            st.session_state['active_case_id'] = selected_id
-            st.rerun()
-    else:
-        st.info("No active cases found in the database.")
-
-    st.divider()
-
-    # 2B. REGISTER NEW CASE
-    st.markdown("### ➕ Initiate New Proceedings")
-    with st.container(border=True):
-        with st.form("reg_case"):
-            c_name = st.text_input("Case Name (e.g. Acme v. Wayne)")
-            c1, c2 = st.columns(2)
-            c_email = c1.text_input("Claimant Email")
-            r_email = c2.text_input("Respondent Email")
-            c3, c4 = st.columns(2)
-            access_pin = c3.text_input("Set Access PIN (for Parties)", value="1234")
+        if all_cases:
+            # Prepare clean table
+            data_for_table = []
+            for c in all_cases:
+                data_for_table.append({
+                    "Case ID": c.get('case_id'),
+                    "Case Name": c.get('case_name'),
+                    "Status": c.get('status'),
+                    "Created": c.get('created_at').strftime("%Y-%m-%d") if c.get('created_at') else "-"
+                })
             
-            # THE FIX: Handles the redirect correctly now
-            if st.form_submit_button("🚀 Initiate Proceedings", type="primary"):
-                if c_name:
-                    new_id = create_new_case(c_name, c_email, r_email, access_pin)
-                    # AUTO-LOGIN TO THE NEW CASE
-                    st.session_state['active_case_id'] = new_id
-                    st.success(f"Case {new_id} Created! Redirecting...")
-                    st.rerun()
-                else:
-                    st.error("Case Name is required.")
+            st.dataframe(pd.DataFrame(data_for_table), use_container_width=True, hide_index=True)
+            
+            # Selector to enter a case
+            c1, c2 = st.columns([3, 1])
+            selected_id = c1.selectbox("Select Case to Manage", [c['Case ID'] for c in data_for_table])
+            
+            if c2.button("Manage Selected Case", type="primary"):
+                st.session_state['active_case_id'] = selected_id
+                st.rerun()
+        else:
+            st.info("No active cases found. Please initiate a new one.")
+
+    # --- TAB 2: CREATE NEW CASE ---
+    with tab_new:
+        st.write("Registering a new case will automatically notify the parties via email.")
+        with st.container(border=True):
+            with st.form("reg_case"):
+                c_name = st.text_input("Case Name (e.g. Acme v. Wayne)")
+                c1, c2 = st.columns(2)
+                c_email = c1.text_input("Claimant Email")
+                r_email = c2.text_input("Respondent Email")
+                arb_email = st.text_input("Arbitrator Email (Optional)")
+                access_pin = st.text_input("Set Access PIN (for Parties)", value="1234")
+                
+                if st.form_submit_button("🚀 Initiate Proceedings"):
+                    if c_name:
+                        with st.spinner("Creating Case & Notifying Parties..."):
+                            new_id = create_new_case(c_name, c_email, r_email, arb_email, access_pin)
+                            st.session_state['active_case_id'] = new_id
+                            st.success(f"Case {new_id} Created! Redirecting to Workspace...")
+                            st.rerun()
+                    else:
+                        st.error("Case Name is required.")
                 
     if st.button("Logout"):
         st.session_state.clear()
@@ -120,8 +127,6 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
 # ==============================================================================
 # 3. CASE WORKSPACE (USER DASHBOARD)
 # ==============================================================================
-# This loads when 'active_case_id' is set (Either by Party Login or LCIA Selection)
-
 role = st.session_state['user_role']
 case_data = load_full_config()
 
@@ -157,7 +162,9 @@ with st.sidebar:
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
 
     st.divider()
-    if st.button("Exit Workspace"):
+    # Logic: If LCIA, go back to Admin Dashboard. If Party, go to Login.
+    btn_label = "Back to Admin Console" if st.session_state.get('is_lcia_admin') else "Exit Workspace"
+    if st.button(btn_label):
         st.session_state['active_case_id'] = None
         st.rerun()
 
