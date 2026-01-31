@@ -210,8 +210,3 @@ def send_email_notification(to_emails, subject, body):
             # 2. Send Real Email
             send_email_via_smtp(to_emails, subject, body)
         except: pass
-
-# --- 6. CRITICAL FIX: DUMMY FUNCTION ---
-def reset_database():
-    """Exists solely to prevent ImportError in main.py."""
-    pass
