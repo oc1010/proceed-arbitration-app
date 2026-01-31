@@ -51,13 +51,15 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
                 st.info("You need the unique Setup PIN sent to your email.")
                 
                 a_case = st.text_input("Case ID", key="a_case")
+                # NEW FIELD: Select Role to fix duplicate email confusion
+                a_role = st.selectbox("I am the:", ["Claimant", "Respondent", "Arbitrator"], key="a_role")
                 a_email = st.text_input("Your Email", key="a_email")
                 a_pin = st.text_input("Setup PIN (from Email)", key="a_pin")
                 new_pass = st.text_input("Create Private Password", type="password", key="n_pass")
                 
                 if st.button("Activate & Set Password"):
                     if a_case and a_email and a_pin and new_pass:
-                        success, msg = activate_user_account(a_case, a_email, a_pin, new_pass)
+                        success, msg = activate_user_account(a_case, a_email, a_pin, new_pass, a_role)
                         if success:
                             st.success(msg)
                             st.info("You can now go to the 'Login' tab.")
