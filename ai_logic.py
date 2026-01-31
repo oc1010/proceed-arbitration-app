@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import datetime, date
 import vertexai
 from vertexai.language_models import TextGenerationModel
+from google.oauth2 import service_account
 from db import load_complex_data, load_full_config
 
 # ==============================================================================
@@ -11,7 +12,7 @@ from db import load_complex_data, load_full_config
 def calculate_doc_prod_score(role):
     """
     Calculates the 'Proportionality Score' strictly via math.
-    Source: Cost Allocation Tool (AI).docx [cite: 114-118]
+    Source: Cost Allocation Tool (AI).docx
     """
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
@@ -24,15 +25,15 @@ def calculate_doc_prod_score(role):
     rejected = sum(1 for r in requests if r.get('status') == 'Denied')
     
     # Python Math: Impossible to make a calculation error here
-    ratio = (rejected / total) * 100
+    ratio = (rejected / total) * 100 if total > 0 else 0.0
     penalty_triggered = ratio > threshold
     
     return ratio, penalty_triggered
 
 def calculate_delay_penalties(role):
     """
-    Calculates delay deductions.
-    Source: Cost Allocation Tool (AI).docx [cite: 128-130]
+    Calculates delay deductions based on 'Approved' extension requests.
+    Source: Cost Allocation Tool (AI).docx
     """
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
@@ -47,7 +48,6 @@ def calculate_delay_penalties(role):
         # and requestor is the role in question.
         if d.get('requestor') == role and d.get('status') == 'Approved':
             # In a real app, we would calc exact days. For demo, we estimate 7 days per request 
-            # or parse from the 'tribunal_decision' string if it contains "Extended by X days"
             days = 7 
             penalty = days * rate
             total_deduction_percent += penalty
@@ -58,12 +58,12 @@ def calculate_delay_penalties(role):
 def calculate_reversal_amount(offerer_role, offer_date_str):
     """
     Filters and sums costs incurred AFTER the specific cut-off date.
-    Source: Cost Allocation Tool (AI).docx [cite: 155]
+    Source: Cost Allocation Tool (AI).docx
     """
     data = load_complex_data()
     costs = data.get('costs', {})
     
-    # Identify the "Loser" of the settlement offer (the one who rejected it)
+    # The Party who REJECTED the offer (the Opposing Party) is the one who pays
     rejecting_party = 'respondent' if offerer_role == 'claimant' else 'claimant'
     target_log = costs.get(f"{rejecting_party}_log", [])
     
@@ -83,7 +83,7 @@ def calculate_reversal_amount(offerer_role, offer_date_str):
 def calculate_burn_rate(role):
     """
     Calculates average spend per month/phase to detect inflation.
-    Source: Cost Allocation Tool (AI).docx 
+    Source: Cost Allocation Tool (AI).docx
     """
     data = load_complex_data()
     costs = data.get('costs', {}).get(f"{role}_log", [])
@@ -93,7 +93,13 @@ def calculate_burn_rate(role):
     total_spend = sum(float(c['amount']) for c in costs)
     
     # Find duration
-    dates = [datetime.strptime(c['date'], "%Y-%m-%d") for c in costs]
+    dates = []
+    for c in costs:
+        try:
+            dates.append(datetime.strptime(c['date'], "%Y-%m-%d"))
+        except:
+            pass
+            
     if not dates: return 0.0
     
     duration_days = (max(dates) - min(dates)).days
@@ -102,13 +108,6 @@ def calculate_burn_rate(role):
     burn_rate_daily = total_spend / duration_days
     return burn_rate_daily
 
-def calculate_interest(principal, rate_percent=2.0, years=1.0):
-    """
-    Simple Interest Calculator (LIBOR + X%).
-    Source: PROCEED - Tool Functionality .docx 
-    """
-    return principal * (rate_percent / 100) * years
-
 # ==============================================================================
 # 2. LOGIC CONTROLLER
 # ==============================================================================
@@ -116,7 +115,7 @@ def calculate_interest(principal, rate_percent=2.0, years=1.0):
 def check_sealed_offers(final_award_val):
     """
     Checks the 'Vault' for any offers higher than the Award.
-    Source: Cost Allocation Tool (AI).docx [cite: 145-146]
+    Source: Cost Allocation Tool (AI).docx
     """
     data = load_complex_data()
     offers = data.get('costs', {}).get('sealed_offers', [])
@@ -125,6 +124,7 @@ def check_sealed_offers(final_award_val):
     for offer in offers:
         try:
             offer_val = float(offer.get('amount', 0.0))
+            # Cost Reversal Logic: If Award < Offer, the Offerer 'won' the settlement game
             if final_award_val < offer_val:
                 reversal_amt, payer = calculate_reversal_amount(offer['offerer'], offer['date'])
                 reversal_triggers.append({
@@ -178,15 +178,23 @@ def generate_cost_award_draft(case_id, final_award_val):
         Cite the 'Burn Rate' as a measure of reasonableness.
         """
         
-        # C. GENERATE
+        # C. GENERATE (Using Service Account for Auth)
         if "gcp_service_account" in st.secrets:
+            # 1. Create Credentials explicitly from Secrets
+            creds = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"]
+            )
+            
+            # 2. Initialize Vertex with these credentials
             project_id = st.secrets["gcp_service_account"]["project_id"]
-            vertexai.init(project=project_id, location="us-central1")
+            vertexai.init(project=project_id, location="us-central1", credentials=creds)
+            
+            # 3. Generate
             model = TextGenerationModel.from_pretrained("text-bison")
             response = model.predict(prompt, temperature=0.2, max_output_tokens=512)
             return response.text
         else:
-            return f"**[Demo Mode]** Vertex AI not connected.\n\nPrompt Context:\n{prompt}"
+            return f"**[Demo Mode]** Vertex AI not connected (Missing Secrets).\n\nPrompt Context:\n{prompt}"
 
     except Exception as e:
-        return f"Error: {e}"
+        return f"Error during AI Generation: {e}"
