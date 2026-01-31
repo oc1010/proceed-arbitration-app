@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db
+from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db, reset_database
 
 st.set_page_config(page_title="PROCEED | Arbitration Cloud", layout="wide")
 
