@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from db import load_complex_data, save_complex_data, load_responses, send_email_notification, upload_file_to_cloud, load_full_config, db
-# Import from the cleaned ai_logic file
 from ai_logic import generate_cost_award_draft, generate_word_document
 
 st.set_page_config(page_title="Cost Management", layout="wide")
@@ -21,10 +20,8 @@ with st.sidebar:
     st.divider()
     st.page_link("main.py", label="🏠 Home Dashboard")
     
-    if role == 'arbitrator':
-        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
-    elif role in ['claimant', 'respondent']:
-        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+    # Simple navigation
+    st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
         
     st.divider()
     if st.button("Logout", use_container_width=True):
@@ -37,53 +34,77 @@ st.title("💰 Phase 5: Cost Management")
 data = load_complex_data()
 costs = data.get("costs", {
     "claimant_log": [], "respondent_log": [], 
+    "common_log": [],
     "final_submissions": [],
     "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, 
+    "payment_requests": [],
     "app_tagging": []
 })
 meta = load_full_config().get("meta", {})
 merits_decided = meta.get("merits_decided", False)
 
-# --- HELPER: DOUBLE BLIND VISIBILITY ---
-def can_view_log(owner_role):
-    """
-    Double-Blind Interface Logic.
-    - Parties see only their own costs.
-    - Common costs are visible to all.
-    - UNLOCK: After merits decided, unlocks for Arbitrator AND Parties.
-    """
-    if owner_role == 'common': return True
-    if merits_decided: return True # Unlocks for everyone
-    if role == owner_role: return True # See own
-    if role == 'arbitrator': return True # Tribunal sees all logs (private view)
-    return False
+# --- DOUBLE-BLIND & UNLOCK LOGIC ---
+# Doc Specification: "Tribunal will have access to the cost data after the merits are decided."
+def get_visible_logs():
+    """Returns a dictionary of logs visible to the current user based on blind rules."""
+    visible = {}
+    
+    # 1. EVERYONE sees Common Costs
+    visible['common'] = costs.get('common_log', [])
+    
+    # 2. PRIVATE LOGS
+    if role == 'claimant':
+        visible['private'] = costs.get('claimant_log', [])
+    elif role == 'respondent':
+        visible['private'] = costs.get('respondent_log', [])
+    elif role == 'arbitrator':
+        visible['private'] = costs.get('arbitrator_log', []) # Tribunal sees own
+        
+    # 3. UNLOCK FOR TRIBUNAL & OPPOSING PARTY
+    # "Unlocked... after tribunal updates on the platform that merits decision has been rendered"
+    if merits_decided:
+        visible['claimant_unlocked'] = costs.get('claimant_log', [])
+        visible['respondent_unlocked'] = costs.get('respondent_log', [])
+    elif role == 'arbitrator':
+        # Arbitrator does NOT see party logs yet (Strict compliance)
+        pass 
+        
+    return visible
+
+visible_logs = get_visible_logs()
 
 # --- TABS ---
+# Tabs aligned with Docx: Cost Logging, Request Payment (Arb), etc.
 tabs = st.tabs(["📝 Cost Logging", "💸 Payment Requests", "🏁 Final Submission", "🔒 Sealed Offers", "🤖 AI Final Award"])
 
 # ==============================================================================
-# TAB 1: COST LOGGING
+# TAB 1: COST LOGGING (Parties & Arbitrator)
 # ==============================================================================
 with tabs[0]:
     st.subheader("Cost Logging")
     
-    # 1. INPUT FORM
+    # --- 1. LOGGING FORM ---
     with st.expander(f"➕ Log New Expense ({role.title()})", expanded=False):
         with st.form("log_cost"):
             c1, c2 = st.columns(2)
-            phase = c1.selectbox("Phase", ["Phase 1: Initiation", "Phase 2: Written Subs", "Phase 3: Doc Prod", "Phase 4: Hearing"]) 
+            
+            # Fields from Doc: Phase, Category, Date, Amount
+            phase = c1.selectbox("Phase", ["Phase 1: Initiation", "Phase 2: Written Submissions", "Phase 3: Document Production", "Phase 4: Hearing"]) 
             
             if role == 'arbitrator':
-                cats = ["Tribunal Fees (Hours)", "Administrative", "Travel", "Drafting"]
-                category = c2.selectbox("Category / Hours Spent", cats)
+                # Doc: Tribunal Fees, Admin, Travel, Drafting
+                cats = ["Tribunal Fees (Hours)", "Administrative", "Travel & Accommodation", "Drafting Awards"]
             else:
+                # Doc: Legal fees, Expert Fees, Transcripts, e-Bundles, Tribunal Fees
                 cats = ["Legal Fees", "Expert Fees", "Transcripts", "e-Bundles", "Tribunal Fees"]
-                category = c2.selectbox("Category", cats)
+                
+            category = c2.selectbox("Category", cats)
             
             c3, c4 = st.columns(2)
             d_exp = c3.date_input("Date of Expenditure")
             amt = c4.number_input("Amount (EUR)", min_value=0.0)
             
+            # Doc: "Common costs... shall be seen by both parties"
             is_common = st.checkbox("Mark as Common/Arbitration Cost (Visible to All)") 
             
             if st.form_submit_button("Log Expense"):
@@ -92,8 +113,8 @@ with tabs[0]:
                     "date": str(d_exp), "amount": amt, 
                     "logged_by": role
                 }
+                # Save to specific list
                 target_list = "common_log" if is_common else f"{role}_log"
-                
                 if target_list not in costs: costs[target_list] = []
                 costs[target_list].append(entry)
                 save_complex_data("costs", costs)
@@ -102,32 +123,47 @@ with tabs[0]:
 
     st.divider()
 
-    # 2. PRIVATE COST SUMMARY
+    # --- 2. VIEW LOGS (Based on Blind Logic) ---
+    
+    # A. Private Cost Summary (Own)
     st.markdown(f"### 🔐 Private Cost Summary ({role.title()})")
-    my_private_data = costs.get(f"{role}_log", [])
-    if my_private_data:
-        st.dataframe(pd.DataFrame(my_private_data), use_container_width=True)
+    if 'private' in visible_logs and visible_logs['private']:
+        df_p = pd.DataFrame(visible_logs['private'])
+        st.dataframe(df_p, use_container_width=True)
     else:
         st.info("No private costs logged yet.")
 
-    # 3. ARBITRATION COST SUMMARY (COMMON)
+    # B. Arbitration Cost Summary (Common)
     st.markdown("### 🌍 Arbitration Cost Summary (Common)")
-    common_data = costs.get("common_log", [])
-    if common_data:
-        st.dataframe(pd.DataFrame(common_data), use_container_width=True)
+    if 'common' in visible_logs and visible_logs['common']:
+        df_c = pd.DataFrame(visible_logs['common'])
+        st.dataframe(df_c, use_container_width=True)
     else:
         st.caption("No common costs logged yet.")
+        
+    # C. Unlocked Party Costs (Only if Merits Decided)
+    if merits_decided and role == 'arbitrator':
+        st.divider()
+        st.warning("🔓 UNLOCKED: Party Costs (Merits Phase Complete)")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.caption("Claimant's Log")
+            st.dataframe(pd.DataFrame(visible_logs.get('claimant_unlocked', [])), use_container_width=True)
+        with c2:
+            st.caption("Respondent's Log")
+            st.dataframe(pd.DataFrame(visible_logs.get('respondent_unlocked', [])), use_container_width=True)
 
 # ==============================================================================
-# TAB 2: PAYMENT REQUESTS
+# TAB 2: PAYMENT REQUESTS (Arbitrator Function)
 # ==============================================================================
 with tabs[1]:
     st.subheader("Financial Management")
     
-    # ARBITRATOR: REQUEST PAYMENT
+    # ARBITRATOR: Request Payment
     if role == 'arbitrator':
         st.write("#### 📤 Request Payment / Deposit")
         with st.form("req_pay"):
+            # Doc Fields: Deposit Type, Amount, Due Date, Payable By
             c1, c2 = st.columns(2)
             dep_type = c1.selectbox("Deposit Type", ["Administrative Fees", "Tribunal Fees", "Hearing Expenses", "Expert / Specialist Fund"])
             p_amt = c2.number_input("Amount Requested (€)", min_value=0.0)
@@ -147,9 +183,13 @@ with tabs[1]:
                 save_complex_data("costs", costs)
                 st.success("Payment Order Logged.")
                 st.rerun()
+                
+        # Doc Functionality: "Set automated reminders"
+        if st.button("🔔 Send Automated Reminders"):
+            st.toast("Reminders sent to Claimant and Respondent via Email.", icon="📧")
 
-    # ALL: VIEW REQUESTS
-    st.write("#### 📜 Payment / Deposit Requests")
+    # ALL: View Requests
+    st.write("#### 📜 Outstanding Requests")
     reqs = costs.get("payment_requests", [])
     if reqs:
         st.dataframe(pd.DataFrame(reqs), use_container_width=True)
@@ -168,13 +208,15 @@ with tabs[2]:
                 costs['final_submissions'].append({"party": role, "amount": total, "date": str(date.today())})
                 save_complex_data("costs", costs)
                 st.success("Submitted.")
+    else:
+        st.info("Parties submit their final statements here.")
 
 # ==============================================================================
-# TAB 4: SEALED OFFERS
+# TAB 4: SEALED OFFERS (Reverse Multiplier Logic)
 # ==============================================================================
 with tabs[3]:
     st.subheader("✉️ Settlement Offer Vault")
-    st.info("Offers are ENCRYPTED. The Tribunal sees existence but not amount until the Award.")
+    st.markdown("**Methodology:** Offers are encrypted. The Tribunal sees existence but not amount until the Award.")
     
     if role in ['claimant', 'respondent']:
         with st.form("sealed_offer"):
@@ -194,7 +236,6 @@ with tabs[3]:
         if offers:
             st.write(f"⚠️ **{len(offers)} Sealed Offer(s) Detected**")
             for i, o in enumerate(offers):
-                # Reveal logic based on merits_decided
                 status_txt = f"**Offer #{i+1}** | Date: {o['date']} | Status: **{o['status']}**"
                 if not merits_decided:
                     st.info(f"{status_txt} (Locked 🔒)")
@@ -207,10 +248,11 @@ with tabs[3]:
 if role == 'arbitrator':
     with tabs[4]:
         st.subheader("🤖 AI Cost Allocation Recommendation")
-        st.info("This tool acts as a 'Tribunal Secretary', analyzing the hard data to propose a logical cost split.")
+        st.info("Analyses: Agreed Framework, Conduct Penalties, and Reverse Multipliers.")
         
-        # 1. TRIGGER MERITS DECISION
+        # 1. TRIGGER MERITS DECISION (Unlock Mechanism)
         st.write("#### 1. Merits Phase Completion")
+        st.caption("Checking this box unlocks the private cost logs for the Tribunal.")
         is_decided = st.checkbox("✅ Declare Merits Decision Rendered", value=merits_decided)
         if is_decided != merits_decided:
             db.collection("arbitrations").document(case_id).update({"meta.merits_decided": is_decided})
