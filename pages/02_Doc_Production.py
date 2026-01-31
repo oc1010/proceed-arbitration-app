@@ -1,501 +1,671 @@
 import streamlit as st
-import pandas as pd
-from datetime import date
-from db import load_complex_data, save_complex_data
+from db import load_structure, save_structure, set_release_status, get_release_status
+import time
 
-# --- PAGE SETUP ---
-st.set_page_config(page_title="Document Production", layout="wide")
-
-# --- AUTH & SESSION STATE ---
-if 'doc_view_mode' not in st.session_state: st.session_state['doc_view_mode'] = 'list' 
-if 'active_req_idx' not in st.session_state: st.session_state['active_req_idx'] = None
-if 'active_party_list' not in st.session_state: st.session_state['active_party_list'] = 'claimant'
-if 'active_form_type' not in st.session_state: st.session_state['active_form_type'] = None
+st.set_page_config(page_title="Edit Questionnaire", layout="wide")
 
 role = st.session_state.get('user_role')
-if not role:
-    st.error("Access Denied.")
-    if st.button("Log in"): st.switch_page("main.py")
+if role not in ['lcia', 'arbitrator']:
+    st.error("Access Denied")
     st.stop()
 
-# --- SIDEBAR (FULL NAVIGATION) ---
+# --- DETERMINE PHASE ---
+if role == 'lcia':
+    CURRENT_PHASE = "phase1"
+    PAGE_TITLE = "Phase 1: Pre-Tribunal Appointment Questionnaire"
+else:
+    CURRENT_PHASE = "phase2"
+    PAGE_TITLE = "Phase 2: Pre-Hearing Questionnaire"
+
+def logout():
+    st.session_state['user_role'] = None
+    st.switch_page("main.py")
+
+# --- SIDEBAR ---
 with st.sidebar:
     st.write(f"User: **{role.upper()}**")
+    if st.button("Logout", use_container_width=True): logout()
     st.divider()
-    st.page_link("main.py", label="🏠 Home Dashboard")
+    st.page_link("main.py", label="Home")
     
     if role == 'lcia':
-        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
-        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
-        
-    elif role == 'arbitrator':
-        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
-        st.page_link("pages/01_Drafting_Engine.py", label="📝 PO1 Drafting")
-        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
-        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
-        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
-        
-    elif role in ['claimant', 'respondent']:
-        st.page_link("pages/00_Fill_Questionnaire.py", label="📝 Fill Questionnaires")
-        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
-        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
-        st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 1 Qs")
+    else:
+        st.page_link("pages/00_Edit_Questionnaire.py", label="Edit Phase 2 Qs")
+        st.page_link("pages/01_Drafting_Engine.py", label="Procedural Order No. 1")
+        st.page_link("pages/02_Doc_Production.py", label="Doc Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
+        st.page_link("pages/04_Cost_Management.py", label="Cost Management")
 
-    st.divider()
-    if st.button("Logout", use_container_width=True):
-        st.session_state['user_role'] = None
-        st.switch_page("main.py")
+st.title(f"✏️ {PAGE_TITLE}")
 
-# --- LOAD DATA ---
-data = load_complex_data()
-doc_prod = data.get("doc_prod", {"claimant": [], "respondent": []})
+# --- RELEASE STATUS ---
+status = get_release_status()
+is_released = status.get(CURRENT_PHASE, False)
 
-# --- CONSTANTS ---
-CATEGORIES = [
-    "(a) General Contractual Documents",
-    "(b) Technical & Project-Specific",
-    "(c) Financial Documents",
-    "(d) Company and Employee Data",
-    "(e) Electronic Metadata",
-    "(f) Other Documents"
+# --- MASTER LIST: PHASE 1 (LCIA) ---
+DEFAULTS_PHASE_1 = [
+    {
+        "id": "p1_duration", 
+        "question": "1. Target Procedural Timetable (Objective for Final Award)", 
+        "type": "radio", 
+        "options": [
+            "**Accelerated:** 6-9 months (requires strict deadlines and limited document production).", 
+            "**Standard efficiency:** 12-15 months.", 
+            "**Extended / Complex:** 18-24+ months (anticipating extensive evidence or multiple phases).",
+            "**Statutory / contractual Limit:** Date required under contract."
+        ]
+    },
+    {
+        "id": "p1_qual", 
+        "question": "2. Arbitrator Availability (Mandatory Qualification)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** The timeline selected above is a mandatory qualification for the appointment of the arbitrator.", 
+            "**No:** The timeline is an objective only."
+        ]
+    },
+    {
+        "id": "p1_early", 
+        "question": "3. Application for Early Determination (Summary Dismissal)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** We anticipate filing an application for early determination of any claims or defenses.", 
+            "**No:** We do not anticipate filing an application.", 
+            "**Possible:** Rights reserved."
+        ]
+    },
+    {
+        "id": "p1_days", 
+        "question": "4. Estimated Hearing Days (Merits)", 
+        "type": "radio", 
+        "options": [
+            "**None:** Documents-only arbitration (no oral hearing).", 
+            "**Short:** 1-3 days.", 
+            "**Medium:** 1 week (4-5 days).", 
+            "**Long:** 2 weeks or more (10+ days)."
+        ]
+    },
+    {
+        "id": "p1_block", 
+        "question": "5. Hearing Block Reservation", 
+        "type": "radio", 
+        "options": [
+            "**Strictly consecutive:** The hearing must be concluded in one continuous block.", 
+            "**Flexible / Split:** We accept split weeks to accommodate arbitrator availability."
+        ]
+    },
+    {
+        "id": "p1_dates", 
+        "question": "6. Blackout Dates / Preferred Windows (Next 18 Months)", 
+        "type": "text_area", 
+        "options": ["Enter specific dates or months here..."]
+    },
+    {
+        "id": "p1_format", 
+        "question": "7. Default Format for Administrative / Procedural Conferences", 
+        "type": "radio", 
+        "options": ["Audio only", "Video Conference", "In-Person"]
+    },
+    {
+        "id": "p1_hearing", 
+        "question": "8. Preference for Main Evidentiary Hearing", 
+        "type": "radio", 
+        "options": [
+            "**Fully Virtual:** All participants attend remotely.", 
+            "**Hybrid (Split Location):** Tribunal and counsel in one physical room and witness joins remotely.", 
+            "**Fully In-Person:** Standard physical hearing."
+        ]
+    },
+    {
+        "id": "p1_data", 
+        "question": "9. Data Protocol (E-Hearing Platform)", 
+        "type": "radio", 
+        "options": [
+            "**Yes:** We prefer a dedicated third-party platform.", 
+            "**No:** Email and standard file transfer service (Dropbox / ShareFile) is sufficient."
+        ]
+    },
+    {
+        "id": "p1_contact", 
+        "question": "10. Contact Email for Notifications", 
+        "type": "text_area", 
+        "options": ["Enter primary email..."]
+    }
 ]
-URGENCY_LEVELS = ["(a) Low", "(b) Medium", "(c) High [Tribunal Priority]"]
-DETERMINATION_OPTS = ["Allowed", "Allowed in Part", "Denied", "Reserved"]
 
-# --- HELPER FUNCTIONS ---
-def save_current_data():
-    save_complex_data("doc_prod", doc_prod)
-
-def set_state(mode, idx=None, form_type=None):
-    st.session_state['doc_view_mode'] = mode
-    if idx is not None: st.session_state['active_req_idx'] = idx
-    if form_type is not None: st.session_state['active_form_type'] = form_type
-
-def get_active_list():
-    return doc_prod.get(st.session_state['active_party_list'], [])
-
-def get_active_request():
-    lst = get_active_list()
-    idx = st.session_state['active_req_idx']
-    if idx is not None and 0 <= idx < len(lst):
-        return lst[idx]
-    return {}
-
-def render_read_only_block(label, content, sub_label=None):
-    """Renders a clean, neutral box for read-only data."""
-    if not content or content == "Pending": content = "—"
-    with st.container(border=True):
-        st.markdown(f"**{label}**")
-        if sub_label: st.caption(sub_label)
-        st.write(content)
-
-# ==============================================================================
-# VIEW 1: REDFERN SCHEDULE (LIST VIEW)
-# ==============================================================================
-if st.session_state['doc_view_mode'] == 'list':
-    st.title("📂 Document Production (Redfern Schedule)")
+# --- MASTER LIST: PHASE 2 (ARBITRATOR) ---
+DEFAULTS_PHASE_2 = [
+    # EMAIL COLLECTION (CRITICAL FOR PHASE 4)
+    {
+        "id": "contact_email", 
+        "question": "Primary Contact Email (For Timeline Reminders)", 
+        "type": "text_area", 
+        "options": ["Enter email..."]
+    },
+    # I. WRITTEN SUBMISSIONS & TIMETABLE STRUCTURE
+    {
+        "id": "style", 
+        "question": "1. Style of Written Submissions", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Memorial Style.** Simultaneous submission of factual allegations, legal arguments, witness statements, and expert reports with the Statement of Case and Defence. (Front-loaded costs; potentially faster resolution).",
+            "**Option B: Pleading Style.** Submission of factual allegations and legal arguments first (with core documents only). Witness statements and expert reports are exchanged only after document production. (Spreads costs over time; traditional English style)."
+        ]
+    },
+    {
+        "id": "bifurcation", 
+        "question": "2. Bifurcation of Proceedings", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Single Phase.** The Tribunal should hear all issues (Jurisdiction, Liability, and Quantum) together in a single phase.",
+            "**Option B: Bifurcation Requested.** The Parties request bifurcation (e.g., Liability determined first, Quantum later) pursuant to LCIA Article 22.1(vii)."
+        ]
+    },
     
-    # --- DANGER ZONE: FIX BROKEN DATA ---
-    with st.expander("⚠️ Utility: Reset Data (Click here if list looks broken)"):
-        st.warning("This will delete ALL requests to fix formatting issues.")
-        if st.button("🗑️ Reset All Requests", use_container_width=True):
-            doc_prod["claimant"] = []
-            doc_prod["respondent"] = []
-            save_current_data()
-            st.success("Data wiped. Please create a new request.")
+    # II. DOCUMENT PRODUCTION & EVIDENCE
+    {
+        "id": "doc_prod", 
+        "question": "3. Applicable Guidelines (Evidence)", 
+        "type": "selectbox", 
+        "options": [
+            "**Option A: IBA Rules (Binding).** The IBA Rules on the Taking of Evidence (2020) shall apply as binding rules.",
+            "**Option B: IBA Rules (Guidelines).** The Tribunal shall be guided by the IBA Rules (2020) but they shall not be binding.",
+            "**Option C: No specific guidelines.** The Tribunal shall apply the general evidentiary powers under the LCIA Rules.",
+            "**Option D: Other.** (e.g., The Prague Rules, CIArb Guidelines). Please specify in the comments."
+        ]
+    },
+    {
+        "id": "limits", 
+        "question": "4. Limitations on Document Requests", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Standard (IBA).** No specific numerical limit, subject to relevance and materiality.",
+            "**Option B: Capped.** Requests limited to a specific number (e.g., 20 requests per party) to control costs.",
+            "**Option C: None.** No document production phase (reliance on documents attached to pleadings only)."
+        ]
+    },
+    {
+        "id": "witness_exam", 
+        "question": "5. Witness Examination", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Written Evidence Stands.** Witness statements shall stand as evidence-in-chief. Direct examination at the hearing is limited/not permitted.",
+            "**Option B: Full Direct Exam.** Witness statements are summaries; full direct examination is required at the hearing.",
+            "**Option C: No Hearing.** Cross-examination is waived; the Tribunal will decide based on written witness statements only."
+        ]
+    },
+
+    # III. ELECTRONIC PROTOCOLS & DATA PROTECTION
+    {
+        "id": "platform", 
+        "question": "6. Case Management Platform", 
+        "type": "radio", 
+        "options": [
+            "**Option A: PROCEED Platform.** The Parties agree to use the specific 'PROCEED' platform for all filings, tracking, and the procedural calendar.",
+            "**Option B: Email Only.** Individual case management via email/PDF filings only."
+        ]
+    },
+    {
+        "id": "bundling", 
+        "question": "7. Electronic Bundling", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Joint Bundle.** Joint Hearing Bundle (Parties collaborate on a single indexed bundle).",
+            "**Option B: Individual Bundles.** Individual Bundles (Each party prepares its own separate bundle)."
+        ]
+    },
+    {
+        "id": "gdpr", 
+        "question": "8. Data Protection (GDPR) & Cybersecurity", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Standard.** Standard security measures (encrypted email/platform) are sufficient.",
+            "**Option B: Enhanced.** The dispute involves highly sensitive data requiring specific information security protocols under LCIA Article 30A."
+        ]
+    },
+
+    # IV. COSTS & FUNDING
+    {
+        "id": "cost_allocation", 
+        "question": "9. Cost Allocation Methodology", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Costs follow the event.** ('Loser pays').",
+            "**Option B: Apportionment.** Based on relative success of issues.",
+            "**Option C: Split Costs.** Parties bear their own legal costs; administrative costs split 50/50."
+        ]
+    },
+    {
+        "id": "counsel_fees", 
+        "question": "10. Counsel Fees (Recoverability)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Market Rates.** Market rates apply (recoverable costs must be 'reasonable').",
+            "**Option B: Capped Rates.** Recoverable hourly rates for counsel shall be capped at a pre-agreed amount."
+        ]
+    },
+    {
+        "id": "internal_costs", 
+        "question": "11. Internal Management Costs", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Recoverable.** Reasonable internal management time/costs are recoverable.",
+            "**Option B: Not Recoverable.**"
+        ]
+    },
+    {
+        "id": "deposits", 
+        "question": "12. Administrative Deposits", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Split 50/50.** Split 50/50 between Claimant and Respondent from the outset.",
+            "**Option B: Claimant Pays Initial.** Claimant pays 100% of the initial deposit."
+        ]
+    },
+
+    # V. TRIBUNAL ASSISTANCE & LOGISTICS
+    {
+        "id": "secretary", 
+        "question": "13. Tribunal Secretary", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Consent.** The Parties consent to the appointment of a Tribunal Secretary to assist with administrative tasks.",
+            "**Option B: Object.** The Parties object to the appointment of a Tribunal Secretary."
+        ]
+    },
+    {
+        "id": "sec_fees", 
+        "question": "14. Tribunal Secretary Fees (if Option A selected)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Standard LCIA (£75 - £175 / hr).** Hourly rate between £75 to £175 (per standard LCIA Schedule of Costs).",
+            "**Option B: Draft PO1 Template (£100 - £250 / hr).** Hourly rate between £100 to £250 (per the specific draft PO1 template)."
+        ]
+    },
+    {
+        "id": "extensions", 
+        "question": "15. Protocol for Time Extensions", 
+        "type": "selectbox", 
+        "options": [
+            "**Option A: Standard.** Extensions may be granted by the Tribunal upon a reasoned request showing good cause.",
+            "**Option B: Strict.** Extensions granted only in 'exceptional circumstances'.",
+            "**Option C: Flexible.** Short extensions (e.g., up to 3 days) may be agreed between parties without Tribunal intervention, provided the hearing date is not jeopardized."
+        ]
+    },
+
+    # VI. PARTY & COUNSEL DETAILS
+    {
+        "id": "reps_info", 
+        "question": "16. Authorised Representatives (LCIA Art. 18)", 
+        "type": "text_area", 
+        "options": ["Enter Lead Counsel Name, Email, Firm..."]
+    },
+    {
+        "id": "funding", 
+        "question": "17. Third-Party Funding", 
+        "type": "radio", 
+        "options": [
+            "**Option A: None.** No third-party funding is currently in place.",
+            "**Option B: Exists.** Third-party funding is in place. (Please disclose the identity of the funder immediately to comply with conflict check requirements)."
+        ]
+    },
+
+    # VII. HEARING LOGISTICS & TIMING
+    {
+        "id": "deadline_timezone", 
+        "question": "18. Definition of 'Deadline' (Timezone)", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Time of the Seat.** Time of the Seat of Arbitration (e.g., 17:00 London time).",
+            "**Option B: Time of Presiding Arbitrator.** Time of the Presiding Arbitrator's location.",
+            "**Option C: Time of Filing Party.** Time of the filing party's location."
+        ]
+    },
+    {
+        "id": "physical_venue_preference", 
+        "question": "19. Physical Hearing Venue", 
+        "type": "radio", 
+        "options": [
+            "**Option A: At Seat.** The hearings shall take place physically at the Seat of Arbitration.",
+            "**Option B: Neutral Venue.** The hearings shall take place at a different neutral venue (e.g., IDRC London, Maxwell Chambers Singapore)."
+        ]
+    },
+    {
+        "id": "interpretation", 
+        "question": "20. Interpretation and Translation", 
+        "type": "radio", 
+        "options": [
+            "**Option A: English Only.** The proceedings will be conducted entirely in English; no interpretation is anticipated.",
+            "**Option B: Interpretation Required.** One or more witnesses will testify in a language other than English; simultaneous interpretation will be required."
+        ]
+    },
+
+    # VIII. LIMITS ON SUBMISSIONS
+    {
+        "id": "limits_submission", 
+        "question": "21. Page Limits for Written Submissions", 
+        "type": "radio", 
+        "options": [
+            "**Option A: None.** No specific page limits; parties will use reasonable discretion.",
+            "**Option B: Strict.** Strict page limits shall apply (e.g., 50 pages for first round, 25 pages for second round).",
+            "**Option C: Legal Only.** Limits shall apply to the legal argument sections only, excluding witness statements and expert reports."
+        ]
+    },
+    {
+        "id": "ai_guidelines", 
+        "question": "22. Artificial Intelligence Guidelines", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Adopt Guidelines.** The Tribunal should include the CIArb Guidelines on the Use of AI as a guiding text for the Parties' use of technology.",
+            "**Option B: None.** No specific guidelines on AI are necessary at this stage."
+        ]
+    },
+
+    # IX. COMPLEXITY & CONSOLIDATION
+    {
+        "id": "consolidation", 
+        "question": "23. Consolidation and Concurrent Conduct", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Stand-Alone.** This arbitration stands alone; no consolidation or concurrent conduct is anticipated.",
+            "**Option B: Consolidation.** There are related arbitrations between the parties. The parties request Consolidation into a single legal proceeding.",
+            "**Option C: Concurrent Conduct.** There are related arbitrations. The parties request Concurrent Conduct (separate awards, but synchronized timetables and hearings) pursuant to Article 22.7(iii)."
+        ]
+    },
+
+    # X. HEARING MANAGEMENT
+    {
+        "id": "chess_clock", 
+        "question": "24. Time Allocation at Hearing", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Chess Clock.** Fixed time allocation (e.g., 50/50 split of total hearing time) which the parties must manage themselves.",
+            "**Option B: Tribunal Discretion.** The Tribunal controls the length of examination for each witness on a case-by-case basis."
+        ]
+    },
+    {
+        "id": "post_hearing", 
+        "question": "25. Post-Hearing Briefs", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Oral Closings Only.** Oral closing arguments only; no post-hearing briefs.",
+            "**Option B: Written Briefs.** Post-hearing written briefs are required (replacing or supplementing oral closings).",
+            "**Option C: Costs Only.** Costs Submissions only (no merits briefing) after the hearing."
+        ]
+    },
+
+    # XI. DATA RETENTION
+    {
+        "id": "time_shred_docs", 
+        "question": "26. Destruction of Documents", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Immediate.** Hard copies should be destroyed/shredded immediately upon issuance of the Final Award.",
+            "**Option B: Retain.** Hard copies should be retained for the applicable limitation period for challenges (e.g., 28 days under LCIA Art 27) and then destroyed."
+        ]
+    },
+
+    # XII. EXPERT EVIDENCE PROTOCOLS
+    {
+        "id": "expert_meeting", 
+        "question": "27. Meetings of Experts & Joint Reports", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Joint Report.** Expert counterparts must meet and produce a Joint Report identifying areas of agreement and disagreement before the hearing.",
+            "**Option B: Independent.** Experts shall submit independent reports only; no pre-hearing meetings or joint reports are required."
+        ]
+    },
+    {
+        "id": "expert_hot_tub", 
+        "question": "28. Mode of Expert Questioning ('Hot-Tubbing')", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Sequential.** Sequential Examination. Experts will be cross-examined individually, one after the other.",
+            "**Option B: Hot-Tubbing.** Witness Conferencing. Experts from both sides dealing with the same discipline shall give evidence concurrently and may debate issues directly with each other and the Tribunal."
+        ]
+    },
+    {
+        "id": "expert_reply", 
+        "question": "29. Reply Expert Reports", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Simultaneous.** Simultaneous exchange of initial reports, followed by simultaneous exchange of Reply reports.",
+            "**Option B: Sequential.** Sequential exchange (Claimant first, then Respondent), with no Reply reports permitted unless new factual evidence is introduced."
+        ]
+    },
+
+    # XIII. AWARD SPECIFICS
+    {
+        "id": "sign_award", 
+        "question": "30. Electronic Signatures on the Award", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Electronic.** The Parties agree that the Tribunal may sign the Award electronically.",
+            "**Option B: Wet Ink.** The Parties require the Award to be signed in 'wet ink' (hard copy) for enforcement purposes in specific jurisdictions."
+        ]
+    },
+    {
+        "id": "currency", 
+        "question": "31. Currency of the Award", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Contract Currency.** The Award shall be expressed in the currency of the contract/transaction (e.g., USD).",
+            "**Option B: Cost Currency.** The Award shall be expressed in the currency of the costs incurred (e.g., GBP for legal costs, USD for damages).",
+            "**Option C: Tribunal Discretion.** Left to the Tribunal's discretion based on the applicable law."
+        ]
+    },
+    {
+        "id": "interest", 
+        "question": "32. Interest Calculation", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Applicable Law.** The Tribunal shall apply interest rates and methods (simple/compound) prescribed by the applicable substantive law.",
+            "**Option B: Simple Interest.** The Parties agree that any interest awarded shall be simple interest only.",
+            "**Option C: Compound Interest.** The Parties agree that any interest awarded shall be compound interest."
+        ]
+    },
+    {
+        "id": "last_submission", 
+        "question": "33. Definition of 'Last Submission'", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Merits Brief.** The 'Last Submission' triggering the 3-month reporting period is the final Post-Hearing Brief on the merits. (Cost submissions are handled separately/later).",
+            "**Option B: Final Filing.** The 'Last Submission' is the very last filing, including Submissions on Costs."
+        ]
+    },
+
+    # XIV. HEARING LOGISTICS & TRANSCRIPTS
+    {
+        "id": "transcription", 
+        "question": "34. Transcription Services", 
+        "type": "selectbox", 
+        "options": [
+            "**Option A: Live / Real-time.** Live / Real-time transcription is required (Parties see the text appear instantly on screens).",
+            "**Option B: Daily Turnaround.** Transcripts provided at the end of each hearing day.",
+            "**Option C: Standard Turnaround.** Transcripts provided 1-2 weeks after the hearing.",
+            "**Option D: None.** No transcription; the Tribunal’s recording/notes shall suffice."
+        ]
+    },
+    {
+        "id": "demonstratives", 
+        "question": "35. Demonstrative Exhibits", 
+        "type": "radio", 
+        "options": [
+            "**Option A: 24 Hours.** Demonstratives must be exchanged in hard copy/email 24 hours before use.",
+            "**Option B: Immediate.** Demonstratives must be exchanged immediately prior to the start of the examination of the relevant witness.",
+            "**Option C: No specific rule.** Demonstratives may be used freely provided they contain no new evidence."
+        ]
+    },
+
+    # XV. PRIVILEGE & DOCUMENT PRODUCTION
+    {
+        "id": "privilege_std", 
+        "question": "36. Standard of Legal Privilege", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Seat Rules.** The Tribunal shall apply the rules of privilege of the Seat of Arbitration (e.g., English Law).",
+            "**Option B: Closest Connection.** The Tribunal shall apply the rules of privilege of the party claiming the privilege (Most Favored Nation approach).",
+            "**Option C: Strictest.** The Tribunal shall apply the strictest applicable privilege rule among the parties' jurisdictions."
+        ]
+    },
+    {
+        "id": "privilege_logs", 
+        "question": "37. Privilege Logs", 
+        "type": "radio", 
+        "options": [
+            "**Option A: Required.** Parties withholding documents on grounds of privilege must produce a detailed privilege log (Index) describing the document and the basis for privilege.",
+            "**Option B: Not Required.** Privilege logs are not required unless the Tribunal specifically orders one following a dispute."
+        ]
+    },
+
+    # XVI. CONFIDENTIALITY & TRANSPARENCY
+    {
+        "id": "publication", 
+        "question": "38. Publication of the Award (Sourcebook Topic 46)", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Default LCIA):** Strict Confidentiality. The award shall remain confidential and shall not be published.",
+            "**Option B (Redacted Publication):** The party consents to the publication of the award in a redacted format to protect names and sensitive commercial data. Redactions shall be agreed upon by the parties.",
+            "**Option C (Sanitized Summary):** The party consents to the publication of a summary of the legal reasoning of the award only, with no identifying facts."
+        ]
+    },
+
+    # XVII. DISABILITY ACCOMMODATION
+    {
+        "id": "disability", 
+        "question": "39. Accommodations for Participants", 
+        "type": "radio", 
+        "options": [
+            "**Option A (General Clause):** The PO1 shall include a standard liberty to apply, stating: \"At any point, either party may advise the Tribunal of a person who requires reasonable accommodation to facilitate their full participation.\"",
+            "**Option B (Specific Needs Now):** A participant already requires specific accommodations (e.g., document formatting for screen readers, specific break schedules, wheelchair access for physical venues).",
+            "**Option C:** No specific clause is required in PO1; parties will raise ad hoc if necessary."
+        ]
+    },
+
+    # XVIII. SUSTAINABILITY
+    {
+        "id": "sustainability", 
+        "question": "40. Green Protocols", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Campaign for Greener Arbitrations):** The Tribunal and parties shall conduct the arbitration in accordance with the Green Protocols of the Campaign for Greener Arbitrations (e.g., avoiding unnecessary travel, electronic-only bundles).",
+            "**Option B (Tribunal Discretion):** The Tribunal shall consider sustainability/environmental impact when making procedural rulings but no formal protocol is adopted.",
+            "**Option C:** No specific sustainability measures beyond the LCIA's default electronic filing rules."
+        ]
+    },
+
+    # XIX. ETHICS & COUNSEL CONDUCT
+    {
+        "id": "ethics", 
+        "question": "41. Guidelines on Party Representation", 
+        "type": "radio", 
+        "options": [
+            "**Option A (LCIA Only):** Conduct shall be governed exclusively by the mandatory Annex to the LCIA Rules 2020.",
+            "**Option B (LCIA + IBA):** The Tribunal shall also be guided by the IBA Guidelines on Party Representation in International Arbitration (2013). In the event of conflict, the LCIA Rules/Annex shall prevail."
+        ]
+    },
+
+    # XX. AMICABLE SETTLEMENT & MEDIATION
+    {
+        "id": "mediation", 
+        "question": "42. Mediation Window / Settlement Facilitation", 
+        "type": "radio", 
+        "options": [
+            "**Option A (Standard):** The arbitration proceeds on a linear timetable. Parties may settle at any time, but no specific \"pause\" is built into the schedule.",
+            "**Option B (Mediation Window):** The Procedural Timetable shall include a specific stay of proceedings (e.g., 30 days) after the first round of written submissions to allow parties to attempt mediation.",
+            "**Option C (Tribunal Facilitation):** The parties authorize the Tribunal to facilitate settlement discussions (e.g., giving a preliminary non-binding view), understanding this may limit their ability to challenge the Tribunal later for lack of impartiality."
+        ]
+    }
+]
+
+# --- LOAD CORRECT DATA ---
+current_structure = load_structure(phase=CURRENT_PHASE)
+# If DB is empty for this phase, fallback to defaults
+if not current_structure:
+    current_structure = DEFAULTS_PHASE_1 if role == 'lcia' else DEFAULTS_PHASE_2
+
+# --- ADD CUSTOM QUESTION ---
+if st.button("➕ Add New Question", type="primary"):
+    new_id = f"custom_{CURRENT_PHASE}_{int(time.time())}"
+    # Next number logic
+    try:
+        last_q_text = current_structure[-1]['question']
+        last_num = int(last_q_text.split(".")[0])
+        next_num = last_num + 1
+    except:
+        next_num = len(current_structure) + 1
+        
+    new_q = {"id": new_id, "question": f"{next_num}. New Question", "type": "radio", "options": ["**Option A:** Yes", "**Option B:** No"]}
+    current_structure.append(new_q)
+    save_structure(current_structure, phase=CURRENT_PHASE)
+    st.rerun()
+
+# --- EDITOR FORM ---
+with st.form("editor_form"):
+    updated_structure = []
+    st.markdown("### Questions Configuration")
+    
+    for i, q in enumerate(current_structure):
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([6, 2, 1])
+            
+            # Question Text
+            new_q_text = c1.text_input(f"Question #{i+1}", value=q['question'], key=f"q_{i}")
+            
+            # Type Selector
+            type_map = {"radio": "List (Radio)", "selectbox": "Dropdown", "text_area": "Text Input"}
+            rev_map = {"List (Radio)": "radio", "Dropdown": "selectbox", "Text Input": "text_area"}
+            curr_type = type_map.get(q['type'], "List (Radio)")
+            new_type_disp = c2.selectbox("Type", ["List (Radio)", "Dropdown", "Text Input"], index=["List (Radio)", "Dropdown", "Text Input"].index(curr_type), key=f"t_{i}")
+            new_type = rev_map[new_type_disp]
+            
+            # Include Toggle
+            is_included = c3.checkbox("Include", value=True, key=f"inc_{i}")
+            
+            # Options (SEPARATE EDIT BOXES FOR EACH OPTION)
+            new_options = []
+            if new_type != "text_area":
+                st.write("**Options:**")
+                existing_opts = q.get('options', [])
+                
+                # Render a text input for EACH option individually
+                for idx, opt_text in enumerate(existing_opts):
+                    val = st.text_input(f"Option {idx+1}", value=opt_text, key=f"o_{i}_{idx}")
+                    new_options.append(val)
+                
+                # Add default blank slots if fewer than 2 options (for new questions)
+                if len(new_options) < 2:
+                    for j in range(len(new_options), 2):
+                        val = st.text_input(f"Option {j+1}", value=f"Option {j+1}", key=f"o_{i}_{j}")
+                        new_options.append(val)
+            else:
+                new_options = ["Text Input"]
+
+            if is_included:
+                updated_structure.append({
+                    "id": q['id'], "question": new_q_text, "type": new_type, "options": new_options
+                })
+    
+    # ACTION BUTTONS
+    c_save, c_release = st.columns([1, 1])
+    
+    with c_save:
+        if st.form_submit_button("💾 Save Draft"):
+            save_structure(updated_structure, phase=CURRENT_PHASE)
+            st.success("Draft saved.")
+            
+    with c_release:
+        # Check current status
+        btn_label = "🚀 Release to Parties" if not is_released else "🚀 Update Released Version"
+        if st.form_submit_button(btn_label, type="primary"):
+            save_structure(updated_structure, phase=CURRENT_PHASE)
+            set_release_status(CURRENT_PHASE, True)
+            st.success(f"✅ {PAGE_TITLE} is now LIVE for the parties!")
+            time.sleep(1)
             st.rerun()
-    
-    # Unified Tabs
-    tab_c, tab_r = st.tabs(["Claimant's Requests", "Respondent's Requests"])
-    
-    def render_request_list(party_key):
-        request_list = doc_prod[party_key]
-        
-        # New Request Button (Only for List Owner)
-        if role == party_key:
-            if st.button(f"➕ Create New Request ({party_key.title()})", key=f"btn_new_{party_key}"):
-                new_idx = len(request_list)
-                new_req = {
-                    "req_no": f"{new_idx + 1}.", 
-                    "category": CATEGORIES[0],
-                    "date_req": str(date.today()),
-                    "urgency": URGENCY_LEVELS[0],
-                    "desc": "", 
-                    "objection": {}, 
-                    "reply": {}, 
-                    "determination": {}
-                }
-                doc_prod[party_key].append(new_req)
-                save_current_data()
-                st.session_state['active_party_list'] = party_key
-                set_state('form', new_idx, 'request') 
-                st.rerun()
 
-        if not request_list:
-            st.info("No requests submitted yet.")
-            return
-
-        # TABLE HEADER
-        # Column 1 is 1.5 ratio to fit "Req. 1" comfortably
-        cols = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
-        headers = ["Request No.", "Category", "Date", "Urgency", "Objection?", "Tribunal Ruling"]
-        for c, h in zip(cols, headers): c.markdown(f"**{h}**")
-        st.divider()
-
-        # TABLE ROWS
-        for i, req in enumerate(request_list):
-            c1, c2, c3, c4, c5, c6 = st.columns([1.5, 3, 1.5, 1.5, 1.5, 2])
-            
-            # 1. CLICKABLE BUTTON
-            # Using "📂 Req. X" ensures the button is wide enough to render text visible
-            btn_label = f"📂 Req. {i+1}"
-            
-            if c1.button(btn_label, key=f"nav_{party_key}_{i}", use_container_width=True):
-                st.session_state['active_party_list'] = party_key
-                set_state('details', i)
-                st.rerun()
-
-            # 2. DATA
-            cat_full = req.get('category', 'Unknown') or "Unknown"
-            parts = cat_full.split(' ')
-            cat_short = " ".join(parts[1:3]) + "..." if len(parts) > 2 else cat_full
-            c2.caption(cat_short)
-            
-            c3.write(req.get('date_req', '-'))
-            
-            urg = req.get('urgency', '')
-            if "High" in urg: c4.error("High")
-            elif "Medium" in urg: c4.warning("Medium")
-            else: c4.success("Low")
-            
-            # 3. STATUS
-            obj_status = req.get('objection', {}).get('is_objected', 'Pending')
-            if "Yes" in obj_status: c5.warning("Yes")
-            elif "No" in obj_status: c5.success("No")
-            else: c5.write("-")
-
-            det = req.get('determination', {})
-            decision = det.get('decision')
-            dec_date = det.get('date')
-            
-            if decision:
-                c6.info(f"**{decision}**\n\n{dec_date}")
-            else:
-                c6.caption("Pending")
-            
-            st.divider()
-
-    with tab_c:
-        render_request_list("claimant")
-    with tab_r:
-        render_request_list("respondent")
-
-
-# ==============================================================================
-# VIEW 2: THE REQUEST HUB (DETAILS)
-# ==============================================================================
-elif st.session_state['doc_view_mode'] == 'details':
-    req = get_active_request()
-    idx = st.session_state['active_req_idx']
-    list_owner = st.session_state['active_party_list'] # 'claimant' or 'respondent'
-    
-    st.button("⬅️ Back to Schedule", on_click=lambda: set_state('list'))
-    st.divider()
-    
-    req_title = f"{idx+1}"
-    req_desc_short = req.get('desc', 'No description provided')[:100]
-    
-    st.subheader(f"Managing Request No. {req_title}")
-    st.caption(f"Context: {req_desc_short}...")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    # 1. REQUEST CARD
-    with col1:
-        with st.container(border=True):
-            st.markdown("### 1. Request")
-            st.caption(f"Filed: {req.get('date_req')}")
-            has_objection = req.get('objection', {}).get('date')
-            
-            # Logic: Only Owner can Edit
-            if role == list_owner:
-                btn_label = "View Details" if has_objection else "Edit Request"
-                if st.button(btn_label, key="btn_view_req", use_container_width=True):
-                    set_state('form', idx, 'request')
-                    st.rerun()
-            else:
-                if st.button("View Request", key="btn_view_req_guest", use_container_width=True):
-                    set_state('form', idx, 'request')
-                    st.rerun()
-
-    # 2. OBJECTION CARD
-    with col2:
-        with st.container(border=True):
-            st.markdown("### 2. Objection")
-            obj_data = req.get('objection', {})
-            
-            # Check if this user is the "Opponent" (The one who should object)
-            is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
-            
-            if obj_data:
-                # Already filled
-                status = "Objected" if obj_data.get('is_objected') == "Yes" else "No Objection"
-                st.write(f"**{status}**")
-                if st.button("View Objection", key="btn_view_obj", use_container_width=True):
-                    set_state('form', idx, 'objection')
-                    st.rerun()
-            else:
-                # Not filled yet
-                st.caption("Pending")
-                
-                # Logic: Only Opponent can file objection. Owner waits.
-                if is_opponent:
-                    if st.button("File Objection", key="btn_file_obj", use_container_width=True):
-                        set_state('form', idx, 'objection')
-                        st.rerun()
-                else:
-                    if role == list_owner:
-                        st.info("Waiting for Opposition")
-                    st.button("File Objection", key="btn_file_obj_dis", disabled=True, use_container_width=True)
-
-    # 3. REPLY CARD
-    with col3:
-        with st.container(border=True):
-            st.markdown("### 3. Reply")
-            is_objected = req.get('objection', {}).get('is_objected') == "Yes"
-            reply_data = req.get('reply', {})
-            
-            # Check if user is Owner (The one who replies)
-            is_owner = (role == list_owner)
-
-            if reply_data:
-                status = "Reply Filed" if reply_data.get('has_replied') == "Yes" else "Withdrawn"
-                st.write(f"**{status}**")
-                if st.button("View Reply", key="btn_view_rep", use_container_width=True):
-                    set_state('form', idx, 'reply')
-                    st.rerun()
-            elif is_objected:
-                st.caption("Pending Reply")
-                # Logic: Only Owner can file reply. Opponent waits.
-                if is_owner:
-                    if st.button("File Reply", key="btn_file_rep", use_container_width=True):
-                        set_state('form', idx, 'reply')
-                        st.rerun()
-                else:
-                    if role != 'arbitrator': st.info("Waiting for Reply")
-                    st.button("File Reply", key="btn_file_rep_dis", disabled=True, use_container_width=True)
-            else:
-                st.caption("N/A (No Objection)")
-                st.button("No Action Needed", disabled=True, use_container_width=True)
-
-    # 4. RULING CARD
-    with col4:
-        with st.container(border=True):
-            st.markdown("### 4. Decision")
-            det = req.get('determination', {}).get('decision')
-            
-            if det:
-                st.info(f"**{det}**")
-            else:
-                st.warning("Pending", icon="⚠️")
-            
-            if role == 'arbitrator':
-                btn_txt = "Issue Decision" if not det else "Edit Decision"
-                if st.button(btn_txt, use_container_width=True):
-                    set_state('form', idx, 'determination')
-                    st.rerun()
-            else:
-                if st.button("View Decision", use_container_width=True):
-                    set_state('form', idx, 'determination')
-                    st.rerun()
-
-
-# ==============================================================================
-# VIEW 3: INPUT FORMS & READ-ONLY VIEWS
-# ==============================================================================
-elif st.session_state['doc_view_mode'] == 'form':
-    f_type = st.session_state['active_form_type']
-    req = get_active_request()
-    list_owner = st.session_state['active_party_list'] 
-    
-    st.button("⬅️ Back to Hub", on_click=lambda: set_state('details'))
-    st.divider()
-
-    # --- FORM 1: REQUEST ---
-    if f_type == 'request':
-        is_owner = (role == list_owner)
-        has_obj = req.get('objection', {}).get('date') 
-        clean_num = f"{st.session_state['active_req_idx']+1}"
-
-        if is_owner and not has_obj:
-            st.subheader("📝 Edit Request")
-            with st.form("frm_request"):
-                # Disabled ID field
-                new_no = st.text_input("Request No. (Auto-Assigned)", value=clean_num, disabled=True)
-                
-                curr_cat = req.get('category')
-                cat_idx = 0
-                if curr_cat in CATEGORIES: cat_idx = CATEGORIES.index(curr_cat)
-                new_cat = st.selectbox("Category", CATEGORIES, index=cat_idx)
-                
-                d_val = pd.to_datetime(req.get('date_req', date.today()))
-                new_date = st.date_input("Date", value=d_val)
-                
-                curr_urg = req.get('urgency')
-                urg_idx = 0
-                if curr_urg in URGENCY_LEVELS: urg_idx = URGENCY_LEVELS.index(curr_urg)
-                new_urg = st.selectbox("Urgency", URGENCY_LEVELS, index=urg_idx)
-                
-                new_desc = st.text_area("Description & Relevance (Required)", value=req.get('desc', ''), height=150)
-                
-                if st.form_submit_button("Save Request"):
-                    if not new_desc.strip():
-                        st.error("Description cannot be empty.")
-                    else:
-                        req.update({
-                            'req_no': clean_num,
-                            'category': new_cat, 
-                            'date_req': str(new_date), 
-                            'urgency': new_urg, 
-                            'desc': new_desc
-                        })
-                        save_current_data()
-                        st.success("Saved!")
-                        set_state('details')
-                        st.rerun()
-        else:
-            st.subheader("📄 Request Details")
-            c1, c2 = st.columns(2)
-            with c1: render_read_only_block("Request No.", clean_num)
-            with c2: render_read_only_block("Date", req.get('date_req'))
-            c3, c4 = st.columns(2)
-            with c3: render_read_only_block("Category", req.get('category'))
-            with c4: render_read_only_block("Urgency", req.get('urgency'))
-            render_read_only_block("Description & Relevance", req.get('desc'))
-
-
-    # --- FORM 2: OBJECTION ---
-    elif f_type == 'objection':
-        is_opponent = (role != list_owner and role in ['claimant', 'respondent'])
-        curr_obj = req.get('objection', {})
-        is_submitted = bool(curr_obj)
-        
-        # Only allow edit if Opponent AND not yet submitted
-        if is_opponent and not is_submitted:
-            st.subheader("✋ File Objection")
-            st.info(f"Request: {req.get('desc')[:100]}...")
-            
-            with st.form("frm_objection"):
-                st.write("**Do you object to producing these documents?**")
-                choice = st.radio("Decision", ["I Object", "No Objection (Will Produce)"], label_visibility="collapsed")
-                comments = st.text_area("Grounds for Objection (Required if Objecting)", height=150)
-                
-                if st.form_submit_button("Submit Final Decision"):
-                    is_obj_bool = "Yes" if choice == "I Object" else "No"
-                    if is_obj_bool == "Yes" and not comments.strip():
-                        st.error("You must provide grounds for your objection.")
-                    else:
-                        req['objection'] = {
-                            'is_objected': is_obj_bool,
-                            'date': str(date.today()),
-                            'reason': comments if is_obj_bool == "Yes" else "Party confirmed no objection."
-                        }
-                        save_current_data()
-                        st.success("Decision Recorded")
-                        set_state('details')
-                        st.rerun()
-        else:
-            st.subheader("Objection Status")
-            status_text = "Objected" if curr_obj.get('is_objected') == "Yes" else "No Objection"
-            render_read_only_block("Status", status_text)
-            render_read_only_block("Date", curr_obj.get('date'))
-            render_read_only_block("Grounds / Comments", curr_obj.get('reason'))
-
-
-    # --- FORM 3: REPLY ---
-    elif f_type == 'reply':
-        is_owner = (role == list_owner)
-        curr_reply = req.get('reply', {})
-        is_submitted = bool(curr_reply)
-        
-        render_read_only_block("Opposing Party's Objection", req.get('objection', {}).get('reason'))
-        st.divider()
-
-        # Only allow edit if Owner AND not yet submitted
-        if is_owner and not is_submitted:
-            st.subheader("↩️ File Reply")
-            with st.form("frm_reply"):
-                st.write("**Do you wish to maintain your request?**")
-                choice = st.radio("Decision", ["Maintain Request (File Reply)", "Withdraw Request / Accept Objection"], label_visibility="collapsed")
-                rep_text = st.text_area("Reply Arguments (Required if Maintaining)", height=150)
-                
-                if st.form_submit_button("Submit Final Reply"):
-                    has_rep_bool = "Yes" if "Maintain" in choice else "No"
-                    if has_rep_bool == "Yes" and not rep_text.strip():
-                        st.error("You must provide arguments to maintain your request.")
-                    else:
-                        req['reply'] = {
-                            'has_replied': has_rep_bool,
-                            'date': str(date.today()),
-                            'text': rep_text if has_rep_bool == "Yes" else "Request Withdrawn / Objection Accepted."
-                        }
-                        save_current_data()
-                        st.success("Reply Recorded")
-                        set_state('details')
-                        st.rerun()
-        else:
-            st.subheader("Reply Status")
-            if not curr_reply:
-                st.info("No Reply Filed Yet.")
-            else:
-                status_text = "Maintained" if curr_reply.get('has_replied') == "Yes" else "Withdrawn"
-                render_read_only_block("Status", status_text)
-                render_read_only_block("Date", curr_reply.get('date'))
-                render_read_only_block("Arguments", curr_reply.get('text'))
-
-
-    # --- FORM 4: TRIBUNAL DECISION ---
-    elif f_type == 'determination':
-        st.subheader("⚖️ Tribunal's Decision")
-        is_arb = (role == 'arbitrator')
-        curr_det = req.get('determination', {})
-        
-        with st.expander("Show Full Redfern Context", expanded=True):
-            st.markdown(f"**1. Request:** {req.get('desc')}")
-            st.divider()
-            c1, c2 = st.columns(2)
-            with c1: 
-                render_read_only_block("2. Objection", req.get('objection', {}).get('reason', 'None'))
-            with c2:
-                rep_txt = req.get('reply', {}).get('text')
-                if not rep_txt: rep_txt = "No Reply Filed"
-                render_read_only_block("3. Reply", rep_txt)
-        
-        st.write("")
-        
-        if is_arb:
-            with st.form("frm_determination"):
-                dec = st.selectbox("Ruling", DETERMINATION_OPTS, index=DETERMINATION_OPTS.index(curr_det.get('decision')) if curr_det.get('decision') in DETERMINATION_OPTS else 3)
-                det_date = st.date_input("Date", value=pd.to_datetime(curr_det.get('date', date.today())))
-                reason = st.text_area("Reasoning", value=curr_det.get('reason', ''), height=150)
-                
-                if st.form_submit_button("Issue Order"):
-                    req['determination'] = {
-                        'decision': dec,
-                        'date': str(det_date),
-                        'reason': reason
-                    }
-                    save_current_data()
-                    st.success("Order Issued")
-                    set_state('details')
-                    st.rerun()
-        else:
-            decision_text = curr_det.get('decision')
-            if not decision_text:
-                st.warning("⚠️ Pending Determination from Tribunal")
-            else:
-                render_read_only_block("Tribunal Ruling", decision_text)
-                render_read_only_block("Date of Decision", curr_det.get('date'))
-                render_read_only_block("Tribunal's Reasoning", curr_det.get('reason'))
+if is_released:
+    st.success("🟢 Status: RELEASED to Parties")
+else:
+    st.warning("🔴 Status: HIDDEN from Parties (Draft Mode)")
