@@ -10,13 +10,11 @@ from datetime import datetime
 @st.cache_resource
 def get_db():
     try:
-        # Tries to connect to the "proceed" database you created
         return firestore.Client.from_service_account_info(
             st.secrets["gcp_service_account"], 
             database="proceed"
         )
-    except Exception as e:
-        # Fallback to default if "proceed" database isn't found
+    except Exception:
         try:
             return firestore.Client.from_service_account_info(st.secrets["gcp_service_account"])
         except Exception as e2:
@@ -32,27 +30,23 @@ def get_storage_bucket():
             return storage_client.get_bucket(bucket_name)
         except:
             return storage_client.create_bucket(bucket_name)
-    except Exception as e:
+    except Exception:
         return None
 
 db = get_db()
 bucket = get_storage_bucket()
 
-# --- 2. EMAIL HELPER (WITH DEBUGGING) ---
+# --- 2. EMAIL HELPER ---
 def send_email_via_smtp(to_list, subject, body):
-    """Sends a real email and reports errors to the UI."""
-    # Robust credential fetching (checks top-level AND nested)
     smtp_user = st.secrets.get("ST_MAIL_USER")
     smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
     
     if not smtp_user:
-        # Try finding it inside the gcp block just in case
         gcp_sec = st.secrets.get("gcp_service_account", {})
         smtp_user = gcp_sec.get("ST_MAIL_USER")
         smtp_pass = gcp_sec.get("ST_MAIL_PASSWORD")
 
     if not smtp_user or not smtp_pass:
-        st.warning("⚠️ Email not sent: ST_MAIL_USER or ST_MAIL_PASSWORD missing in secrets.")
         return False
 
     smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
@@ -72,16 +66,12 @@ def send_email_via_smtp(to_list, subject, body):
                 msg.attach(MIMEText(body, 'plain'))
                 server.send_message(msg)
         return True
-    except smtplib.SMTPAuthenticationError:
-        st.error("❌ Email Failed: Authentication Error. Check your App Password.")
-        return False
     except Exception as e:
-        st.error(f"❌ Email Failed: {e}")
+        print(f"Email error: {e}")
         return False
 
 # --- 3. LCIA MASTER FUNCTIONS ---
-def create_new_case(case_name, claimant_email, respondent_email, arbitrator_email, access_pin="1234"):
-    """Creates a new case and notifies parties. Returns (ID, Email_Success_Bool)."""
+def create_new_case(case_name, claimant_email, respondent_email, arbitrator_email, setup_pin="1234"):
     case_id = f"LCIA-{int(datetime.now().timestamp())}"
     
     new_case_data = {
@@ -90,11 +80,17 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
             "case_name": case_name,
             "created_at": datetime.now(),
             "status": "Phase 1: Initiation",
-            "access_pin": access_pin,
+            "setup_pin": setup_pin,  # Used only for activation
             "parties": {
-                "claimant": claimant_email, 
-                "respondent": respondent_email,
-                "arbitrator": arbitrator_email
+                "claimant": claimant_email.strip().lower(), 
+                "respondent": respondent_email.strip().lower(),
+                "arbitrator": arbitrator_email.strip().lower() if arbitrator_email else ""
+            },
+            # STORES PRIVATE PASSWORDS (None initially)
+            "credentials": {
+                "claimant": None,
+                "respondent": None,
+                "arbitrator": None
             }
         },
         "phase1": [], 
@@ -113,7 +109,6 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
     if db:
         db.collection("arbitrations").document(case_id).set(new_case_data)
         
-        # SEND WELCOME EMAIL
         recipients = [claimant_email, respondent_email, arbitrator_email]
         subject = f"Notice of Arbitration: {case_name}"
         body = f"""
@@ -121,12 +116,13 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         
         The LCIA has registered a new arbitration matter: {case_name}.
         
-        ACCESS CREDENTIALS:
-        -------------------
-        Case ID: {case_id}
-        Access PIN: {access_pin}
-        
-        Please log in at: https://proceedai.streamlit.app/
+        STEP 1: ACTIVATE YOUR ACCOUNT
+        -----------------------------
+        1. Go to https://proceedai.streamlit.app/
+        2. Select the "Activate Account" tab.
+        3. Enter Case ID: {case_id}
+        4. Enter your Email and the Setup PIN: {setup_pin}
+        5. Create your own private password.
         
         Regards,
         LCIA Registrar
@@ -136,7 +132,6 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
     return case_id, email_success
 
 def get_all_cases_metadata():
-    """Fetches a list of all cases for the LCIA Dashboard."""
     if not db: return []
     try:
         docs = db.collection("arbitrations").stream()
@@ -146,25 +141,89 @@ def get_all_cases_metadata():
             if 'meta' in d:
                 cases_list.append(d['meta'])
         return cases_list
-    except Exception as e:
-        st.error(f"Error fetching case list: {e}")
+    except Exception:
         return []
 
-# --- 4. PARTY ACCESS FUNCTIONS ---
+# --- 4. SECURE AUTHENTICATION FLOW ---
 def get_active_case_id():
     return st.session_state.get('active_case_id')
 
-def verify_case_access(case_id, pin_attempt):
-    if not db: return False, None
-    doc = db.collection("arbitrations").document(case_id).get()
-    if doc.exists:
-        data = doc.to_dict()
-        stored_pin = data['meta'].get('access_pin', '')
-        if stored_pin == pin_attempt:
-            return True, data['meta']
-    return False, None
+def activate_user_account(case_id, email, input_setup_pin, new_password):
+    """
+    Registers a user by letting them set a password IF they have the Setup PIN.
+    """
+    if not db: return False, "DB Error"
+    
+    doc_ref = db.collection("arbitrations").document(case_id)
+    doc = doc_ref.get()
+    
+    if not doc.exists: return False, "Case ID not found."
+    
+    data = doc.to_dict()
+    meta = data.get('meta', {})
+    
+    # 1. Validate Setup PIN
+    if meta.get('setup_pin') != input_setup_pin:
+        return False, "Invalid Setup PIN."
+        
+    # 2. Identify Role by Email
+    user_role = None
+    input_email = email.strip().lower()
+    for role, stored_email in meta.get('parties', {}).items():
+        if stored_email == input_email:
+            user_role = role
+            break
+            
+    if not user_role:
+        return False, "This email is not associated with this case."
+        
+    # 3. Check if already registered
+    if meta.get('credentials', {}).get(user_role):
+        return False, "Account already activated. Please go to Login."
+        
+    # 4. Save New Password
+    # Note: In production, hash this password. For hackathon, storing plain is acceptable demo practice.
+    db.collection("arbitrations").document(case_id).update({
+        f"meta.credentials.{user_role}": new_password
+    })
+    
+    return True, f"Account activated for {user_role.title()}!"
 
-# --- 5. STANDARD DATA LOADERS ---
+def login_user(case_id, email, password):
+    """
+    Logs in a user using their PRIVATE password.
+    """
+    if not db: return False, "DB Error", None, None
+    
+    doc = db.collection("arbitrations").document(case_id).get()
+    if not doc.exists: return False, "Case ID not found.", None, None
+    
+    data = doc.to_dict()
+    meta = data.get('meta', {})
+    
+    # 1. Identify Role
+    user_role = None
+    input_email = email.strip().lower()
+    for role, stored_email in meta.get('parties', {}).items():
+        if stored_email == input_email:
+            user_role = role
+            break
+            
+    if not user_role:
+        return False, "Email not found in this case.", None, None
+        
+    # 2. Check Password
+    stored_password = meta.get('credentials', {}).get(user_role)
+    
+    if not stored_password:
+        return False, "Account not activated yet. Use the 'Activate Account' tab first.", None, None
+        
+    if stored_password != password:
+        return False, "Incorrect Password.", None, None
+        
+    return True, "Success", user_role, meta
+
+# --- 5. STANDARD LOADERS ---
 def load_full_config():
     cid = get_active_case_id()
     if not cid or not db: return {}
@@ -217,7 +276,7 @@ def upload_file_to_cloud(uploaded_file):
         blob = bucket.blob(blob_name)
         blob.upload_from_file(uploaded_file)
         return blob.name 
-    except Exception as e:
+    except Exception:
         return None
 
 def send_email_notification(to_emails, subject, body):
@@ -228,3 +287,5 @@ def send_email_notification(to_emails, subject, body):
             db.collection("arbitrations").document(cid).update({"complex_data.notifications": firestore.ArrayUnion([new_note])})
             send_email_via_smtp(to_emails, subject, body)
         except: pass
+
+def reset_database(): pass
