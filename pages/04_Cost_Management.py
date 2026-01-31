@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-from db import load_complex_data, save_complex_data, load_responses, send_email_notification
+from db import load_complex_data, save_complex_data, load_responses, send_email_notification, upload_file_to_cloud
 
 st.set_page_config(page_title="Cost Management", layout="wide")
 
@@ -31,7 +31,7 @@ with st.sidebar:
         
     st.divider()
     if st.button("Logout", use_container_width=True):
-        st.session_state['user_role'] = None
+        st.session_state['active_case_id'] = None
         st.switch_page("main.py")
 
 st.title("💰 Phase 5: Cost Management")
@@ -53,10 +53,9 @@ def get_party_emails():
     return [e for e in [c, r] if e]
 
 # --- TAB LOGIC (Role Based) ---
-# Create tab list dynamically based on role
 tab_names = ["🧾 Ongoing Costs", "🏁 Final Submission", "⚖️ Tribunal Ledger"]
 if role == 'arbitrator':
-    tab_names.append("🏷️ App Tagging") # Only for Arbitrator
+    tab_names.append("🏷️ App Tagging") 
 
 tabs = st.tabs(tab_names)
 
@@ -72,15 +71,24 @@ with tabs[0]:
             pdf = c2.file_uploader("Upload Invoice (PDF)")
             
             if st.form_submit_button("Add Cost Item"):
+                # --- NEW CLOUD UPLOAD LOGIC ---
+                file_link = "No file"
+                if pdf:
+                    with st.spinner("Uploading to Secure Cloud Storage..."):
+                        uploaded_name = upload_file_to_cloud(pdf)
+                        if uploaded_name:
+                            file_link = uploaded_name
+                # ------------------------------
+
                 key = f"{role}_log"
                 entry = {
                     "date": str(d_inc), "desc": desc, "amount": amt, 
-                    "file": pdf.name if pdf else "No file", 
+                    "file": file_link, 
                     "submitted_on": str(date.today())
                 }
                 costs[key].append(entry)
                 save_complex_data("costs", costs)
-                st.success("Cost item recorded.")
+                st.success("Cost item recorded and file stored in cloud.")
                 st.rerun()
     
     st.divider()
@@ -103,11 +111,20 @@ with tabs[1]:
             final_pdf = st.file_uploader("Upload Final Cost Schedule (PDF/Excel)")
             
             if st.form_submit_button("Submit Final Costs"):
+                # --- NEW CLOUD UPLOAD LOGIC ---
+                file_link = "No file"
+                if final_pdf:
+                    with st.spinner("Uploading Final Submission..."):
+                        uploaded_name = upload_file_to_cloud(final_pdf)
+                        if uploaded_name:
+                            file_link = uploaded_name
+                # ------------------------------
+
                 sub_entry = {
                     "party": role,
                     "date": str(date.today()),
                     "total": total_claimed,
-                    "file": final_pdf.name if final_pdf else "No file"
+                    "file": file_link
                 }
                 if "final_submissions" not in costs: costs["final_submissions"] = []
                 costs["final_submissions"].append(sub_entry)
@@ -115,7 +132,7 @@ with tabs[1]:
                 
                 # Notify
                 send_email_notification(get_party_emails(), "Final Costs Submitted", f"{role.title()} has submitted their Final Statement of Costs.")
-                st.success("Final submission received.")
+                st.success("Final submission received and stored.")
     
     # View Final Submissions
     if "final_submissions" in costs and costs["final_submissions"]:
