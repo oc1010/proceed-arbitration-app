@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db
+from db import create_new_case, get_active_case_id, load_full_config, activate_user_account, login_user, get_all_cases_metadata, db
 
 st.set_page_config(page_title="PROCEED | Arbitration Cloud", layout="wide")
 
@@ -18,28 +18,53 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
     
     col1, col2 = st.columns(2)
     
-    # --- BOX 1: PARTY / ARBITRATOR LOGIN ---
+    # --- BOX 1: PARTY / ARBITRATOR ACCESS ---
     with col1:
         with st.container(border=True):
-            st.subheader("🔑 Access Workspace")
-            st.write("For Claimants, Respondents, and Arbitrators.")
+            st.subheader("🔑 Workspace Access")
             
-            case_input = st.text_input("Case ID", placeholder="LCIA-170...")
-            pin_input = st.text_input("Access PIN", type="password", placeholder="****")
-            role_input = st.selectbox("Select Your Role", ["Claimant", "Respondent", "Arbitrator"])
+            tab_login, tab_setup = st.tabs(["Login", "Activate Account"])
             
-            if st.button("Enter Case", type="primary"):
-                if not db:
-                    st.error("Database not connected.")
-                else:
-                    valid, meta = verify_case_access(case_input, pin_input)
-                    if valid:
-                        st.session_state['active_case_id'] = case_input
-                        st.session_state['user_role'] = role_input.lower()
-                        st.success(f"Welcome to {meta['case_name']}")
-                        st.rerun()
+            # A. LOGIN (EXISTING USERS)
+            with tab_login:
+                st.write("Enter your credentials.")
+                l_case = st.text_input("Case ID", key="l_case")
+                l_email = st.text_input("Email", key="l_email")
+                l_pass = st.text_input("Password", type="password", key="l_pass")
+                
+                if st.button("Log In", type="primary"):
+                    if l_case and l_email and l_pass:
+                        success, msg, role, meta = login_user(l_case, l_email, l_pass)
+                        if success:
+                            st.session_state['active_case_id'] = l_case
+                            st.session_state['user_role'] = role
+                            st.success(f"Welcome back, {role.title()}!")
+                            st.rerun()
+                        else:
+                            st.error(msg)
                     else:
-                        st.error("Invalid Case ID or PIN.")
+                        st.error("Please fill in all fields.")
+
+            # B. ACTIVATION (FIRST TIME USERS)
+            with tab_setup:
+                st.write("First time here? Set up your password.")
+                st.info("You need the Setup PIN from the LCIA invitation email.")
+                
+                a_case = st.text_input("Case ID", key="a_case")
+                a_email = st.text_input("Your Email", key="a_email")
+                a_pin = st.text_input("Setup PIN (from Email)", key="a_pin")
+                new_pass = st.text_input("Create Password", type="password", key="n_pass")
+                
+                if st.button("Activate & Set Password"):
+                    if a_case and a_email and a_pin and new_pass:
+                        success, msg = activate_user_account(a_case, a_email, a_pin, new_pass)
+                        if success:
+                            st.success(msg)
+                            st.info("Please switch to the 'Login' tab to enter.")
+                        else:
+                            st.error(msg)
+                    else:
+                        st.error("All fields are required.")
 
     # --- BOX 2: LCIA REGISTRAR LOGIN ---
     with col2:
@@ -50,7 +75,7 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
             admin_pass = st.text_input("Registrar Password", type="password")
             
             if st.button("Login as Registrar"):
-                if admin_pass == "lcia123": # Hackathon Password
+                if admin_pass == "lcia123":
                     st.session_state['is_lcia_admin'] = True
                     st.session_state['user_role'] = 'lcia'
                     st.rerun()
@@ -97,6 +122,8 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
     # --- TAB 2: CREATE NEW CASE ---
     with tab_new:
         st.write("Registering a new case will automatically notify the parties via email.")
+        st.info("The system will generate a Setup PIN which parties must use to create their own passwords.")
+        
         with st.container(border=True):
             with st.form("reg_case"):
                 c_name = st.text_input("Case Name (e.g. Acme v. Wayne)")
@@ -104,26 +131,25 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
                 c_email = c1.text_input("Claimant Email")
                 r_email = c2.text_input("Respondent Email")
                 arb_email = st.text_input("Arbitrator Email (Optional)")
-                access_pin = st.text_input("Set Access PIN (for Parties)", value="1234")
+                setup_pin = st.text_input("One-Time Setup PIN", value="1234")
                 
                 if st.form_submit_button("🚀 Initiate Proceedings"):
-                    if c_name:
+                    if c_name and c_email and r_email:
                         with st.spinner("Creating Case & Notifying Parties..."):
-                            # CALLING UPDATED DB FUNCTION
-                            new_id, email_ok = create_new_case(c_name, c_email, r_email, arb_email, access_pin)
+                            new_id, email_ok = create_new_case(c_name, c_email, r_email, arb_email, setup_pin)
                             
                             st.session_state['active_case_id'] = new_id
                             st.session_state['user_role'] = 'lcia'
                             
                             if email_ok:
-                                st.toast("✅ Emails Sent Successfully!", icon="📧")
+                                st.toast("✅ Invitation Emails Sent!", icon="📧")
                             else:
-                                st.toast("⚠️ Case Created, but Email Failed. Check DB logs.", icon="❌")
+                                st.toast("⚠️ Email Failed. Check DB.", icon="❌")
                                 
                             st.success(f"Case {new_id} Created! Redirecting...")
                             st.rerun()
                     else:
-                        st.error("Case Name is required.")
+                        st.error("Case Name and Party Emails are required.")
                 
     if st.button("Logout"):
         st.session_state.clear()
@@ -137,7 +163,6 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
 # ==============================================================================
 role = st.session_state.get('user_role')
 
-# --- SAFETY CHECK: PREVENT CRASH IF ROLE IS LOST ---
 if not role:
     st.warning("Session expired. Please log in again.")
     if st.button("Return to Login"):
