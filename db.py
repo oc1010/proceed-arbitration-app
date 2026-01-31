@@ -172,9 +172,6 @@ def get_active_case_id():
     return st.session_state.get('active_case_id')
 
 def activate_user_account(case_id, email, input_setup_pin, new_password, target_role):
-    """
-    Registers a user. Requires Role + Email + PIN to match perfectly.
-    """
     if not db: return False, "DB Error"
     
     doc_ref = db.collection("arbitrations").document(case_id)
@@ -185,34 +182,34 @@ def activate_user_account(case_id, email, input_setup_pin, new_password, target_
     data = doc.to_dict()
     meta = data.get('meta', {})
     
-    # 1. Clean Inputs
+    # Clean Inputs
     target_role = target_role.lower()
     input_email = email.strip().lower()
     input_pin = input_setup_pin.strip()
     
-    # 2. Verify Email matches the selected Role
+    # Validation
     registered_email = meta.get('parties', {}).get(target_role, '').lower()
     if registered_email != input_email:
         return False, f"Email mismatch. The email you entered is not registered for the {target_role}."
 
-    # 3. Verify PIN matches the selected Role
     correct_pin = meta.get('setup_pins', {}).get(target_role)
     if str(input_pin) != str(correct_pin):
-        return False, "Invalid Setup PIN. Please check the email sent specifically to you."
+        return False, "Invalid Setup PIN."
         
-    # 4. Check if already registered
     if meta.get('credentials', {}).get(target_role):
         return False, "Account already activated. Please go to Login."
         
-    # 5. Save New Password
+    # Save Password
     db.collection("arbitrations").document(case_id).update({
         f"meta.credentials.{target_role}": new_password
     })
     
     return True, f"Account activated! Welcome, {target_role.title()}."
 
-def login_user(case_id, email, password):
-    """Logs in using PRIVATE password."""
+def login_user(case_id, email, password, role_attempt):
+    """
+    Logs in using Role + Private Password.
+    """
     if not db: return False, "DB Error", None, None
     
     doc = db.collection("arbitrations").document(case_id).get()
@@ -221,19 +218,16 @@ def login_user(case_id, email, password):
     data = doc.to_dict()
     meta = data.get('meta', {})
     
-    # 1. Identify Role
-    user_role = None
+    role_attempt = role_attempt.lower()
     input_email = email.strip().lower()
-    for role, stored_email in meta.get('parties', {}).items():
-        if stored_email == input_email:
-            user_role = role
-            break
-            
-    if not user_role:
-        return False, "Email not found in this case.", None, None
+
+    # 1. Check Email Match for Role
+    registered_email = meta.get('parties', {}).get(role_attempt, '').lower()
+    if registered_email != input_email:
+        return False, f"Email mismatch for {role_attempt.title()}.", None, None
         
     # 2. Check Password
-    stored_password = meta.get('credentials', {}).get(user_role)
+    stored_password = meta.get('credentials', {}).get(role_attempt)
     
     if not stored_password:
         return False, "Account not activated yet. Use the 'Activate Account' tab.", None, None
@@ -241,9 +235,9 @@ def login_user(case_id, email, password):
     if stored_password != password:
         return False, "Incorrect Password.", None, None
         
-    return True, "Success", user_role, meta
+    return True, "Success", role_attempt, meta
 
-# --- 5. STANDARD LOADERS (UNCHANGED) ---
+# --- 5. STANDARD LOADERS ---
 def load_full_config():
     cid = get_active_case_id()
     if not cid or not db: return {}
