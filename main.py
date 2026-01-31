@@ -88,7 +88,7 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
 
     st.divider()
 
-    # 2B. REGISTER NEW CASE (FIXED: AUTO-ENTERS THE CASE)
+    # 2B. REGISTER NEW CASE
     st.markdown("### ➕ Initiate New Proceedings")
     with st.container(border=True):
         with st.form("reg_case"):
@@ -99,7 +99,7 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
             c3, c4 = st.columns(2)
             access_pin = c3.text_input("Set Access PIN (for Parties)", value="1234")
             
-            # This button was causing the issue before. Now we handle the redirect properly.
+            # THE FIX: Handles the redirect correctly now
             if st.form_submit_button("🚀 Initiate Proceedings", type="primary"):
                 if c_name:
                     new_id = create_new_case(c_name, c_email, r_email, access_pin)
