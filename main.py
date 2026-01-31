@@ -1,80 +1,137 @@
 import streamlit as st
 import pandas as pd
-from db import create_new_case, get_active_case_id, load_full_config, db
+from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db
 
-st.set_page_config(page_title="PROCEED Dashboard", layout="wide")
+st.set_page_config(page_title="PROCEED | Arbitration Cloud", layout="wide")
 
-# --- AUTH & SESSION STATE ---
+# --- AUTH & STATE SETUP ---
 if 'user_role' not in st.session_state: st.session_state['user_role'] = None
 if 'active_case_id' not in st.session_state: st.session_state['active_case_id'] = None
+if 'is_lcia_admin' not in st.session_state: st.session_state['is_lcia_admin'] = False
 
-# --- LOBBY: SELECT OR CREATE CASE ---
-if not st.session_state['active_case_id']:
-    st.title("⚖️ PROCEED: Arbitration Manager")
-    st.markdown("### Secure Cloud Gateway")
+# ==============================================================================
+# 1. THE LOBBY (LOGIN SCREEN)
+# ==============================================================================
+if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admin']:
+    st.title("⚖️ PROCEED: Arbitration Cloud")
+    st.caption("Secure Global Arbitration Management Platform")
     
-    tab1, tab2 = st.tabs(["📂 Load Existing Case", "🆕 Register New Case"])
+    col1, col2 = st.columns(2)
     
-    with tab1:
-        st.write("Enter the Case ID provided by the LCIA.")
-        cid_input = st.text_input("Case ID", placeholder="LCIA-170...")
-        
-        # Simple Role Selection for Demo purposes
-        role_input = st.selectbox("Select Your Role", ["arbitrator", "claimant", "respondent", "lcia"])
-        
-        if st.button("Access Case"):
-            if not db:
-                st.error("Database not connected. Check your secrets.")
-            else:
-                doc = db.collection("arbitrations").document(cid_input).get()
-                if doc.exists:
-                    st.session_state['active_case_id'] = cid_input
-                    st.session_state['user_role'] = role_input
-                    st.success("Case Found! Loading...")
+    # --- CARD 1: PARTY LOGIN ---
+    with col1:
+        with st.container(border=True):
+            st.subheader("🔑 Party Login")
+            st.write("Access an ongoing arbitration case.")
+            
+            case_input = st.text_input("Case ID", placeholder="LCIA-170...")
+            pin_input = st.text_input("Access PIN", type="password", placeholder="****")
+            role_input = st.selectbox("Select Role", ["Claimant", "Respondent", "Arbitrator"])
+            
+            if st.button("Enter Case Workspace", type="primary"):
+                if not db:
+                    st.error("Database connection failed.")
+                else:
+                    valid, meta = verify_case_access(case_input, pin_input)
+                    if valid:
+                        st.session_state['active_case_id'] = case_input
+                        st.session_state['user_role'] = role_input.lower()
+                        st.success(f"Welcome to {meta['case_name']}")
+                        st.rerun()
+                    else:
+                        st.error("Invalid Case ID or PIN.")
+
+    # --- CARD 2: LCIA ADMIN LOGIN ---
+    with col2:
+        with st.container(border=True):
+            st.subheader("🏛️ LCIA Registrar")
+            st.write("Administrative Console access.")
+            
+            admin_pass = st.text_input("Registrar Password", type="password")
+            
+            if st.button("Login as Registrar"):
+                # Hardcoded for Hackathon Demo
+                if admin_pass == "lcia123": 
+                    st.session_state['is_lcia_admin'] = True
+                    st.session_state['user_role'] = 'lcia'
                     st.rerun()
                 else:
-                    st.error("Case ID not found in the Cloud Database.")
+                    st.error("Incorrect Password.")
+    st.stop()
 
-    with tab2:
-        st.write("Initialize a new arbitration matter (LCIA Registrar Only).")
-        c_name = st.text_input("Case Name (e.g. Alpha v. Beta)")
-        c_email = st.text_input("Claimant Email")
-        r_email = st.text_input("Respondent Email")
+
+# ==============================================================================
+# 2. LCIA REGISTRAR DASHBOARD (MASTER VIEW)
+# ==============================================================================
+if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
+    st.title("🏛️ LCIA Registrar Console")
+    st.write("Global overview of active arbitration matters.")
+    
+    # 2A. ACTIVE CASES TABLE
+    all_cases = get_all_cases_metadata()
+    if all_cases:
+        df = pd.DataFrame(all_cases)
+        # Clean up for display
+        display_df = df[['case_id', 'case_name', 'status', 'created_at']].copy()
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
         
-        if st.button("Initialize New Case"):
-            if not db:
-                st.error("Database not connected.")
-            else:
-                new_id = create_new_case(c_name, c_email, r_email)
-                st.success(f"Case Created Successfully!")
-                st.code(new_id, language="text")
-                st.info("Please copy this ID. You will need it to log in on the 'Load Existing Case' tab.")
+        st.write("### 📂 Manage Case")
+        selected_id = st.selectbox("Select Case to Enter", [c['case_id'] for c in all_cases])
+        if st.button("Manage Selected Case"):
+            st.session_state['active_case_id'] = selected_id
+            st.rerun()
+    else:
+        st.info("No active cases found.")
 
-    st.stop() # Prevent the rest of the app from loading until logged in
+    st.divider()
 
-# --- LOGGED IN DASHBOARD ---
+    # 2B. REGISTER NEW CASE
+    with st.expander("➕ Register New Arbitration Case", expanded=False):
+        with st.form("reg_case"):
+            c_name = st.text_input("Case Name (e.g. Acme v. Wayne)")
+            c1, c2 = st.columns(2)
+            c_email = c1.text_input("Claimant Email")
+            r_email = c2.text_input("Respondent Email")
+            c3, c4 = st.columns(2)
+            access_pin = c3.text_input("Set Access PIN (for Parties)", value="1234")
+            
+            if st.form_submit_button("🚀 Initiate Proceedings"):
+                new_id = create_new_case(c_name, c_email, r_email, access_pin)
+                st.success(f"Case Registered! ID: {new_id}")
+                st.info(f"Please securely transmit the Case ID and PIN ({access_pin}) to the parties.")
+                st.cache_data.clear() # Refresh table
+                st.rerun()
+                
+    if st.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
+    
+    st.stop()
+
+
+# ==============================================================================
+# 3. CASE WORKSPACE (USER DASHBOARD)
+# ==============================================================================
+# This loads when 'active_case_id' is set (Either by Party Login or LCIA Selection)
+
 role = st.session_state['user_role']
 case_data = load_full_config()
 
-# If data load fails for some reason, provide a safe fallback
 if not case_data:
-    st.error("Failed to load case data. Please re-login.")
-    if st.button("Back to Lobby"):
-        st.session_state['active_case_id'] = None
-        st.rerun()
+    st.error("Error loading case data.")
+    if st.button("Return to Lobby"): st.session_state.clear(); st.rerun()
     st.stop()
 
-# --- SIDEBAR ---
+# --- SIDEBAR NAVIGATION ---
 with st.sidebar:
-    st.header(f"{case_data['meta']['case_name']}")
+    st.header(case_data['meta'].get('case_name', 'Unnamed Case'))
     st.caption(f"ID: {st.session_state['active_case_id']}")
-    st.write(f"User: **{role.upper()}**")
+    st.write(f"Role: **{role.upper()}**")
     st.divider()
     
-    st.page_link("main.py", label="🏠 Home Dashboard")
+    st.page_link("main.py", label="🏠 Workspace Home")
     st.page_link("pages/05_Notifications.py", label="🔔 Notifications")
 
-    # Role-Based Navigation
     if role == 'lcia':
         st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Phase 1")
     elif role == 'arbitrator':
@@ -90,22 +147,19 @@ with st.sidebar:
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
 
     st.divider()
-    if st.button("Logout / Switch Case", use_container_width=True):
+    if st.button("Exit Workspace"):
         st.session_state['active_case_id'] = None
         st.rerun()
 
-# --- MAIN DASHBOARD CONTENT ---
-st.title(f"Welcome, {role.title()}")
-st.markdown(f"### Case Dashboard: {case_data['meta']['case_name']}")
-st.info(f"Current Phase: {case_data['meta']['status']}")
+# --- MAIN WORKSPACE CARDS ---
+st.title(f"Workspace: {role.title()}")
+st.info(f"Status: {case_data['meta']['status']}")
 
-# --- CARDS LOGIC ---
 cards = []
 cards.append(("🔔", "Notifications", "View Alerts & Messages", "pages/05_Notifications.py"))
 
 if role == 'lcia':
     cards.append(("✏️", "Phase 1 Configuration", "Edit Pre-Tribunal Questionnaires", "pages/00_Edit_Questionnaire.py"))
-
 elif role == 'arbitrator':
     cards.extend([
         ("✏️", "Phase 2 Configuration", "Edit Pre-Hearing Questionnaire", "pages/00_Edit_Questionnaire.py"),
@@ -114,7 +168,6 @@ elif role == 'arbitrator':
         ("📅", "Smart Timeline", "Manage Deadlines & Logistics", "pages/03_Smart_Timeline.py"),
         ("💰", "Cost Management", "Track Deposits & Allocations", "pages/04_Cost_Management.py")
     ])
-
 elif role in ['claimant', 'respondent']:
     cards.extend([
         ("📝", "Procedural Forms", "Fill Active Questionnaires", "pages/00_Fill_Questionnaire.py"),
@@ -131,6 +184,3 @@ for i, (icon, title, desc, link) in enumerate(cards):
             st.caption(desc)
             if st.button(f"Open {title}", key=f"btn_{i}", use_container_width=True):
                 st.switch_page(link)
-
-st.divider()
-st.caption("PROCEED Arbitration Management System | Powered by Google Cloud")
