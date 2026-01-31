@@ -29,14 +29,13 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
             with tab_login:
                 st.write("Enter your credentials.")
                 l_case = st.text_input("Case ID", key="l_case")
-                # NEW FIELD: Role Selection for Login
+                # Role Selection for Login
                 l_role = st.selectbox("I am the:", ["Claimant", "Respondent", "Arbitrator"], key="l_role")
                 l_email = st.text_input("Email", key="l_email")
                 l_pass = st.text_input("Password", type="password", key="l_pass")
                 
                 if st.button("Log In", type="primary"):
                     if l_case and l_email and l_pass:
-                        # PASSING ROLE TO LOGIN FUNCTION
                         success, msg, role, meta = login_user(l_case, l_email, l_pass, l_role)
                         if success:
                             st.session_state['active_case_id'] = l_case
@@ -198,14 +197,18 @@ with st.sidebar:
         st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Phase 2")
         st.page_link("pages/01_Drafting_Engine.py", label="📝 PO1 Drafting")
         st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Procedural Timetable")
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
     elif role in ['claimant', 'respondent']:
         st.page_link("pages/00_Fill_Questionnaire.py", label="📝 Questionnaires")
         st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Procedural Timetable")
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
 
+    # --- DEMO LINK INJECTED HERE ---
+    st.divider()
+    st.page_link("pages/99_Demo_Injector.py", label="💉 Demo Injector") 
+    
     st.divider()
     btn_label = "Back to Admin Console" if st.session_state.get('is_lcia_admin') else "Exit Workspace"
     if st.button(btn_label):
@@ -229,7 +232,7 @@ elif role == 'arbitrator':
         ("✏️", "Phase 2 Configuration", "Edit Pre-Hearing Questionnaire", "pages/00_Edit_Questionnaire.py"),
         ("📝", "Drafting Engine", "Generate Procedural Order No. 1", "pages/01_Drafting_Engine.py"),
         ("📂", "Document Production", "Review Requests & Redfern Sched.", "pages/02_Doc_Production.py"),
-        ("📅", "Smart Timeline", "Manage Deadlines & Logistics", "pages/03_Smart_Timeline.py"),
+        ("📅", "Procedural Timetable", "Manage Deadlines & Logistics", "pages/03_Smart_Timeline.py"),
         ("💰", "Cost Management", "Track Deposits & Allocations", "pages/04_Cost_Management.py")
     ])
 
@@ -237,7 +240,7 @@ elif role in ['claimant', 'respondent']:
     cards.extend([
         ("📝", "Procedural Forms", "Fill Active Questionnaires", "pages/00_Fill_Questionnaire.py"),
         ("📂", "Document Production", "Submit Requests & Objections", "pages/02_Doc_Production.py"),
-        ("📅", "Case Timeline", "View Schedule & Request Delays", "pages/03_Smart_Timeline.py"),
+        ("📅", "Procedural Timetable", "View Schedule & Request Delays", "pages/03_Smart_Timeline.py"),
         ("💰", "Cost Submission", "Upload Costs & Final Subs.", "pages/04_Cost_Management.py")
     ])
 
