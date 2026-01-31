@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import datetime, date
 import vertexai
-from vertexai.generative_models import GenerativeModel # UPDATED IMPORT
+from vertexai.generative_models import GenerativeModel
 from google.oauth2 import service_account
 from db import load_complex_data, load_full_config
 
@@ -163,8 +163,8 @@ def generate_cost_award_draft(case_id, final_award_val):
             # 2. Init
             vertexai.init(project=project_id, location="us-central1", credentials=creds)
             
-            # 3. Model Switch -> Gemini 1.5 Flash (Faster/Newer)
-            model = GenerativeModel("gemini-1.5-flash")
+            # 3. Model Switch -> Explicit Version (Fixed)
+            model = GenerativeModel("gemini-1.5-flash-001") # Explicit version suffix added
             
             # 4. Generate
             response = model.generate_content(prompt)
