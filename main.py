@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-# FIX: Removed 'reset_database' from this list to prevent the crash
 from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db
 
 st.set_page_config(page_title="PROCEED | Arbitration Cloud", layout="wide")
@@ -66,7 +65,6 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
 if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
     st.title("🏛️ LCIA Registrar Console")
     
-    # Two clear tabs for managing cases vs creating new ones
     tab_list, tab_new = st.tabs(["📂 Active Cases & Management", "➕ Initiate New Proceedings"])
     
     # --- TAB 1: LIST OF CASES (MANAGE) ---
@@ -75,7 +73,6 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
         all_cases = get_all_cases_metadata()
         
         if all_cases:
-            # Prepare clean table
             data_for_table = []
             for c in all_cases:
                 data_for_table.append({
@@ -87,12 +84,12 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
             
             st.dataframe(pd.DataFrame(data_for_table), use_container_width=True, hide_index=True)
             
-            # Selector to enter a case
             c1, c2 = st.columns([3, 1])
             selected_id = c1.selectbox("Select Case to Manage", [c['Case ID'] for c in data_for_table])
             
             if c2.button("Manage Selected Case", type="primary"):
                 st.session_state['active_case_id'] = selected_id
+                st.session_state['user_role'] = 'lcia' 
                 st.rerun()
         else:
             st.info("No active cases found. Please initiate a new one.")
@@ -112,10 +109,18 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
                 if st.form_submit_button("🚀 Initiate Proceedings"):
                     if c_name:
                         with st.spinner("Creating Case & Notifying Parties..."):
-                            # This calls the updated db.py function with 5 arguments
-                            new_id = create_new_case(c_name, c_email, r_email, arb_email, access_pin)
+                            # CALLING UPDATED DB FUNCTION
+                            new_id, email_ok = create_new_case(c_name, c_email, r_email, arb_email, access_pin)
+                            
                             st.session_state['active_case_id'] = new_id
-                            st.success(f"Case {new_id} Created! Redirecting to Workspace...")
+                            st.session_state['user_role'] = 'lcia'
+                            
+                            if email_ok:
+                                st.toast("✅ Emails Sent Successfully!", icon="📧")
+                            else:
+                                st.toast("⚠️ Case Created, but Email Failed. Check DB logs.", icon="❌")
+                                
+                            st.success(f"Case {new_id} Created! Redirecting...")
                             st.rerun()
                     else:
                         st.error("Case Name is required.")
@@ -130,9 +135,17 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
 # ==============================================================================
 # 3. CASE WORKSPACE (USER DASHBOARD)
 # ==============================================================================
-role = st.session_state['user_role']
-case_data = load_full_config()
+role = st.session_state.get('user_role')
 
+# --- SAFETY CHECK: PREVENT CRASH IF ROLE IS LOST ---
+if not role:
+    st.warning("Session expired. Please log in again.")
+    if st.button("Return to Login"):
+        st.session_state.clear()
+        st.rerun()
+    st.stop()
+
+case_data = load_full_config()
 if not case_data:
     st.error("Error loading case data. Please return to lobby.")
     if st.button("Return to Lobby"): 
@@ -165,7 +178,6 @@ with st.sidebar:
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
 
     st.divider()
-    # Logic: If LCIA, go back to Admin Dashboard. If Party, go to Login.
     btn_label = "Back to Admin Console" if st.session_state.get('is_lcia_admin') else "Exit Workspace"
     if st.button(btn_label):
         st.session_state['active_case_id'] = None
