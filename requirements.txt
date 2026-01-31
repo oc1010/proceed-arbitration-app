@@ -5,3 +5,6 @@ docxtpl
 python-docx
 requests
 docxcompose
+google-cloud-firestore
+google-cloud-storage
+google-cloud-aiplatform
