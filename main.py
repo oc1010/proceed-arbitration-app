@@ -48,19 +48,19 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
             # B. ACTIVATION (FIRST TIME USERS)
             with tab_setup:
                 st.write("First time here? Set up your password.")
-                st.info("You need the Setup PIN from the LCIA invitation email.")
+                st.info("You need the unique Setup PIN sent to your email.")
                 
                 a_case = st.text_input("Case ID", key="a_case")
                 a_email = st.text_input("Your Email", key="a_email")
                 a_pin = st.text_input("Setup PIN (from Email)", key="a_pin")
-                new_pass = st.text_input("Create Password", type="password", key="n_pass")
+                new_pass = st.text_input("Create Private Password", type="password", key="n_pass")
                 
                 if st.button("Activate & Set Password"):
                     if a_case and a_email and a_pin and new_pass:
                         success, msg = activate_user_account(a_case, a_email, a_pin, new_pass)
                         if success:
                             st.success(msg)
-                            st.info("Please switch to the 'Login' tab to enter.")
+                            st.info("You can now go to the 'Login' tab.")
                         else:
                             st.error(msg)
                     else:
@@ -121,8 +121,7 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
 
     # --- TAB 2: CREATE NEW CASE ---
     with tab_new:
-        st.write("Registering a new case will automatically notify the parties via email.")
-        st.info("The system will generate a Setup PIN which parties must use to create their own passwords.")
+        st.write("Registering a new case will generate unique, random PINs and email them to the parties.")
         
         with st.container(border=True):
             with st.form("reg_case"):
@@ -131,20 +130,21 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
                 c_email = c1.text_input("Claimant Email")
                 r_email = c2.text_input("Respondent Email")
                 arb_email = st.text_input("Arbitrator Email (Optional)")
-                setup_pin = st.text_input("One-Time Setup PIN", value="1234")
+                
+                st.caption("Note: Secure PINs will be auto-generated and emailed.")
                 
                 if st.form_submit_button("🚀 Initiate Proceedings"):
                     if c_name and c_email and r_email:
-                        with st.spinner("Creating Case & Notifying Parties..."):
-                            new_id, email_ok = create_new_case(c_name, c_email, r_email, arb_email, setup_pin)
+                        with st.spinner("Generating Keys & Notifying Parties..."):
+                            new_id, email_count = create_new_case(c_name, c_email, r_email, arb_email)
                             
                             st.session_state['active_case_id'] = new_id
                             st.session_state['user_role'] = 'lcia'
                             
-                            if email_ok:
-                                st.toast("✅ Invitation Emails Sent!", icon="📧")
+                            if email_count > 0:
+                                st.toast(f"✅ Sent {email_count} Invitation Emails!", icon="📧")
                             else:
-                                st.toast("⚠️ Email Failed. Check DB.", icon="❌")
+                                st.toast("⚠️ Emails failed to send. Check Database.", icon="❌")
                                 
                             st.success(f"Case {new_id} Created! Redirecting...")
                             st.rerun()
