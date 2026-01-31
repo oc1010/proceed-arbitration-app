@@ -10,7 +10,11 @@ from datetime import datetime
 @st.cache_resource
 def get_db():
     try:
-        return firestore.Client.from_service_account_info(st.secrets["gcp_service_account"])
+        # WE ADDED database="proceed" HERE TO FIX YOUR ERROR
+        return firestore.Client.from_service_account_info(
+            st.secrets["gcp_service_account"], 
+            database="proceed"
+        )
     except Exception as e:
         st.error(f"DB Connection Error: {e}")
         return None
