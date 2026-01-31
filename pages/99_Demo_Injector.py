@@ -5,8 +5,8 @@ from db import get_active_case_id, save_complex_data, db
 
 st.set_page_config(page_title="Realistic Demo Injector", page_icon="💉", layout="wide")
 
-st.title("💉 Realistic Arbitration Data Injector")
-st.warning("⚠️ OVERWRITE WARNING: This will reset the case to a realistic 'End of Hearing' state.")
+st.title("💉 Scenario Builder: 'The Construction Dispute'")
+st.warning("⚠️ OVERWRITE WARNING: This will reset Case Data to a complex 'Post-Hearing' state.")
 
 # --- AUTH CHECK ---
 case_id = get_active_case_id()
@@ -17,164 +17,165 @@ if not case_id:
 st.info(f"Targeting Case: **{case_id}**")
 
 # --- 1. GENERATOR UTILITIES ---
-def get_past_date(days_ago):
-    return date.today() - timedelta(days=days_ago)
+def get_date(base_date, offset_days):
+    return base_date + timedelta(days=offset_days)
 
 # --- 2. COST DATA GENERATOR ---
-def generate_costs():
-    categories = ["Legal Fees (Partners)", "Legal Fees (Associates)", "Expert Witness Fees", "Administrative Costs", "Travel & Accommodation", "Translation Services", "Hearing Venue Costs"]
-    phases = ["Phase 1: Initiation", "Phase 2: Written Submissions", "Phase 3: Doc Production", "Phase 4: Hearing"]
+def generate_costs(start_date):
+    # Phases
+    phases = [
+        ("Phase 1: Initiation", 0, 60),
+        ("Phase 2: Written Submissions", 60, 200),
+        ("Phase 3: Document Production", 200, 260),
+        ("Phase 4: Interim Applications", 100, 300), # Sporadic
+        ("Phase 5: Hearing Preparation", 300, 400),
+        ("Phase 6: Hearing", 400, 415)
+    ]
     
     c_log = []
     r_log = []
     
-    # Claimant: ~€1.8M total
-    for i in range(12):
-        amt = random.randint(15000, 250000)
-        c_log.append({
-            "phase": random.choice(phases),
-            "category": random.choice(categories),
-            "date": str(get_past_date(random.randint(30, 500))),
-            "amount": amt,
-            "logged_by": "claimant",
-            "desc": f"Inv #{random.randint(1000,9999)}: Services rendered."
-        })
+    # Generate random invoices across the timeline
+    for phase_name, start_day, end_day in phases:
+        # Claimant (High Burn Rate)
+        for _ in range(random.randint(3, 6)):
+            d = get_date(start_date, random.randint(start_day, end_day))
+            amt = random.randint(15000, 85000)
+            c_log.append({
+                "phase": phase_name, "category": "Legal Fees",
+                "date": str(d), "amount": amt, "logged_by": "claimant"
+            })
+            
+        # Respondent (Lower Burn Rate)
+        for _ in range(random.randint(2, 5)):
+            d = get_date(start_date, random.randint(start_day, end_day))
+            amt = random.randint(10000, 65000)
+            r_log.append({
+                "phase": phase_name, "category": "Legal Fees",
+                "date": str(d), "amount": amt, "logged_by": "respondent"
+            })
 
-    # Respondent: ~€1.6M total
-    for i in range(14):
-        amt = random.randint(12000, 220000)
-        r_log.append({
-            "phase": random.choice(phases),
-            "category": random.choice(categories),
-            "date": str(get_past_date(random.randint(30, 500))),
-            "amount": amt,
-            "logged_by": "respondent",
-            "desc": f"Inv #{random.randint(1000,9999)}: Professional services."
-        })
-        
-    common_log = [
-        {"phase": "Phase 1", "category": "Tribunal Advance", "date": str(get_past_date(520)), "amount": 60000, "logged_by": "lcia"},
-        {"phase": "Phase 4", "category": "Hearing Venue Deposit", "date": str(get_past_date(100)), "amount": 25000, "logged_by": "lcia"},
+    # Specific Big Ticket Items
+    # 1. Failed Interim Application Cost (Respondent defended successfully)
+    r_log.append({
+        "phase": "Phase 4: Interim Applications", "category": "Legal Fees (Security for Costs)",
+        "date": str(get_date(start_date, 150)), "amount": 45000, "logged_by": "respondent",
+        "note": "Defense against Security for Costs"
+    })
+
+    # 2. Sealed Offer (Respondent offers €3.8M on Day 250)
+    offer_date = str(get_date(start_date, 250))
+    offers = [
+        {"offerer": "respondent", "amount": 3800000.0, "date": offer_date, "status": "Sealed"}
     ]
     
-    # Sealed Offer: €4.5M (If Award < 4.5M, Respondent wins costs)
-    offers = [
-        {"offerer": "respondent", "amount": 4500000.0, "date": str(get_past_date(180)), "status": "Sealed"}
+    # Common Costs
+    common_log = [
+        {"phase": "Phase 1", "category": "Tribunal Advance", "date": str(get_date(start_date, 30)), "amount": 100000, "logged_by": "common"},
+        {"phase": "Phase 6", "category": "Hearing Venue", "date": str(get_date(start_date, 405)), "amount": 30000, "logged_by": "common"},
     ]
 
     return {"claimant_log": c_log, "respondent_log": r_log, "common_log": common_log, "payment_requests": [], "sealed_offers": offers}
 
-# --- 3. DOC PRODUCTION GENERATOR ---
+# --- 3. DOC PRODUCTION (SKEWED) ---
 def generate_doc_prod():
-    # Mixed outcomes, but realistic (most denied/allowed in chunks)
+    # Claimant: Fishing Expedition (80% Rejection) -> Triggers Penalty
     c_reqs = []
-    c_data = [
-        ("Minutes of Board Meetings Jan-Jun 2022", "Proof of delay knowledge.", "Allowed"),
-        ("Internal emails: CEO & Project Director", "Bad faith evidence.", "Allowed"),
-        ("All WhatsApp messages from site", "Informal instructions.", "Denied"), # Frivolous
-        ("Unredacted Board Minutes 2010-2023", "Financial health.", "Denied"), # Fishing
-        ("Invoices from Subcontractor X", "Quantum verification.", "Allowed"),
-    ]
-    for i, (desc, rel, stat) in enumerate(c_data):
-        c_reqs.append({"id": i+1, "desc": desc, "relevance": rel, "objection": "Standard objection.", "reply": "Maintained.", "decision": stat, "status": stat})
+    for i in range(10):
+        status = "Denied" if i < 8 else "Allowed" # 8 Denied, 2 Allowed
+        c_reqs.append({"id": i+1, "category": "Internal Emails", "decision": status, "status": status})
 
+    # Respondent: Reasonable (20% Rejection) -> Safe
     r_reqs = []
-    r_data = [
-        ("Proof of payment for materials", "Quantum verification.", "Allowed"),
-        ("As-built drawings Section B", "Defect analysis.", "Allowed"),
-        ("Personal notes of Architect", "Contemporaneous record.", "Denied"), # Personal property
-    ]
-    for i, (desc, rel, stat) in enumerate(r_data):
-        r_reqs.append({"id": i+1, "desc": desc, "relevance": rel, "objection": "Standard objection.", "reply": "Maintained.", "decision": stat, "status": stat})
+    for i in range(5):
+        status = "Denied" if i < 1 else "Allowed" # 1 Denied, 4 Allowed
+        r_reqs.append({"id": i+1, "category": "Payment Records", "decision": status, "status": status})
         
     return {"claimant": c_reqs, "respondent": r_reqs}
 
-# --- 4. REALISTIC TIMELINE (Mostly Compliant) ---
-def generate_timeline_and_requests():
-    # Start date ~18 months ago
-    start = get_past_date(550)
+# --- 4. TIMELINE & DELAYS (NUANCED) ---
+def generate_timeline(start_date):
+    timeline = []
+    delays = []
     
-    # 1. EXTENSION REQUESTS (Only 3 realistic ones)
-    # R requests extension for Defence (Granted)
-    # C requests extension for Reply (Denied)
-    # Both request hearing shift (Granted)
-    
-    req_log = []
-    
-    # Approved Delay: Respondent Defence (+14 Days)
-    req_log.append({
-        "event": "Statement of Defence", "requestor": "respondent",
-        "reason": "Lead Counsel medical emergency.",
-        "proposed_date": str(start + timedelta(days=120 + 14)),
-        "status": "Approved", "tribunal_decision": "Granted due to medical certification."
-    })
-    
-    # Denied Delay: Claimant Reply
-    req_log.append({
-        "event": "Reply Memorial", "requestor": "claimant",
-        "reason": "Expert witness schedule conflict.",
-        "proposed_date": str(start + timedelta(days=200 + 7)),
-        "status": "Denied", "tribunal_decision": "Denied. Schedule must be maintained."
-    })
-
-    # 2. TIMELINE (Reflecting the 14-day shift from Step 2 onwards)
-    # Note: 'd' is days from start. We bake in the 14-day delay for Respondent and subsequent steps.
-    
-    timeline = [
-        {"m": "Notice of Arbitration", "d": 0, "p": "Claimant", "s": "Completed", "h": []},
-        {"m": "Constitution", "d": 60, "p": "All", "s": "Completed", "h": []},
-        {"m": "Procedural Order No. 1", "d": 90, "p": "Tribunal", "s": "Completed", "h": []},
-        {"m": "Statement of Case", "d": 120, "p": "Claimant", "s": "Completed", "h": []},
-        
-        # DELAY HAPPENED HERE (Original 150 -> Actual 164)
-        {"m": "Statement of Defence", "d": 164, "p": "Respondent", "s": "Completed", "h": ["Extended by 14 days (Medical)"]},
-        
-        # Subsequent steps shifted by 14 days to accommodate
-        {"m": "Redfern Schedules", "d": 194, "p": "Both", "s": "Completed", "h": []},
-        {"m": "Document Production Order", "d": 224, "p": "Tribunal", "s": "Completed", "h": []},
-        {"m": "Reply Memorial", "d": 284, "p": "Claimant", "s": "Completed", "h": ["Extension Denied"]},
-        {"m": "Rejoinder Memorial", "d": 344, "p": "Respondent", "s": "Completed", "h": []},
-        {"m": "Pre-Hearing Conference", "d": 400, "p": "All", "s": "Completed", "h": []},
-        {"m": "Main Evidentiary Hearing", "d": 450, "p": "All", "s": "Completed", "h": []},
-        {"m": "Post-Hearing Briefs", "d": 500, "p": "Both", "s": "Completed", "h": []},
-        {"m": "Statement of Costs", "d": 520, "p": "Both", "s": "Completed", "h": []},
-        
-        # FUTURE STEP
-        {"m": "Final Award", "d": 580, "p": "Tribunal", "s": "Commenced and Pending", "h": []} 
+    milestones = [
+        ("Notice of Arbitration", 0, "Completed"),
+        ("Answer to Notice", 30, "Completed"),
+        ("Procedural Order No. 1", 60, "Completed"),
+        ("Statement of Claim", 120, "Completed"),
+        ("Statement of Defence", 180, "Completed"), # Extension Granted
+        ("Reply Memorial", 240, "Completed"), # DELAY PENALTY HERE
+        ("Rejoinder Memorial", 300, "Completed"),
+        ("Document Production", 330, "Completed"),
+        ("Hearing", 410, "Completed"),
+        ("Post-Hearing Briefs", 450, "Pending")
     ]
     
-    final_timeline = []
-    for i, t in enumerate(timeline):
-        dead_date = start + timedelta(days=t['d'])
-        final_timeline.append({
-            "id": f"ph_{i}", "milestone": t['m'], "deadline": str(dead_date),
-            "responsible_party": t['p'], "requirements": "Standard submission.",
-            "compliance_status": t['s'], "days_remaining": (dead_date - date.today()).days,
-            "amendment_history": t['h']
+    for m, days, status in milestones:
+        timeline.append({
+            "milestone": m, "deadline": str(get_date(start_date, days)),
+            "compliance_status": status
         })
         
-    return final_timeline, req_log
+    # Inject Delays
+    # 1. Consensual Extension (Respondent SoD) - No Penalty
+    delays.append({
+        "event": "Statement of Defence", "requestor": "respondent",
+        "reason": "Parties agreed to 2-week extension.",
+        "status": "Approved", "is_consensual": True, "days": 14
+    })
+    
+    # 2. Non-Consensual Delay (Claimant Reply) - Penalty Trigger
+    delays.append({
+        "event": "Reply Memorial", "requestor": "claimant",
+        "reason": "Expert unavailable.",
+        "status": "Denied", # Request was denied
+        "is_consensual": False, 
+        "days": 5, # Filed 5 days late anyway
+        "note": "Filed late despite denial of extension."
+    })
+    
+    return timeline, delays
+
+# --- 5. INTERIM APPLICATIONS ---
+def generate_applications(start_date):
+    # Claimant filed for Security for Costs -> Denied -> Cost Shifting applies
+    apps = [
+        {
+            "type": "Security for Costs", "filing_party": "claimant",
+            "date": str(get_date(start_date, 140)),
+            "outcome": "Denied",
+            "tribunal_order": "Costs of the Application reserved for Final Award."
+        }
+    ]
+    return apps
 
 # --- INJECTION BUTTON ---
-if st.button("🚀 INJECT REALISTIC DATA", type="primary"):
-    with st.spinner("Simulating controlled arbitration proceedings..."):
-        costs = generate_costs()
+if st.button("🚀 INJECT 'CONSTRUCTION DISPUTE' SCENARIO", type="primary"):
+    start_date = date.today() - timedelta(days=460) # Case started 1.5 years ago
+    
+    with st.spinner("Building procedural history..."):
+        costs = generate_costs(start_date)
         save_complex_data("costs", costs)
         
         doc_prod = generate_doc_prod()
         save_complex_data("doc_prod", doc_prod)
         
-        timeline, delays = generate_timeline_and_requests()
+        timeline, delays = generate_timeline(start_date)
         save_complex_data("timeline", timeline)
         save_complex_data("delays", delays)
         
-        db.collection("arbitrations").document(case_id).update({"meta.status": "Phase 5: Award Deliberation"})
+        apps = generate_applications(start_date)
+        save_complex_data("applications", apps)
+        
+        db.collection("arbitrations").document(case_id).update({"meta.status": "Phase 6: Post-Hearing"})
 
-    st.success("✅ REALISTIC DATA INJECTED.")
-    st.balloons()
+    st.success("✅ SCENARIO INJECTED: 'The Construction Dispute'")
     st.markdown("""
-    **Scenario Created:**
-    - **Delays:** Only 1 major approved delay (Statement of Defence).
-    - **Doc Prod:** 5 requests per side (realistic volume), mixed outcomes.
-    - **Costs:** High value, sealed offer of €4.5M present.
+    **Scenario Details:**
+    * **Conduct:** Claimant fishing expedition (80% doc rejection).
+    * **Delays:** Claimant filed Reply late (Non-consensual). Respondent got a consensual extension.
+    * **Interim Apps:** Claimant lost a 'Security for Costs' application.
+    * **Sealed Offer:** Respondent offered €3.8M on Day 250.
+    * **Costs:** Respondent costs lower than Claimant.
     """)
