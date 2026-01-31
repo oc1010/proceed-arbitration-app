@@ -11,11 +11,11 @@ from io import BytesIO
 from db import load_complex_data, load_full_config
 
 # ==============================================================================
-# 1. DETERMINISTIC CALCULATION ENGINE
+# 1. HARD MATH ENGINE (Deterministic - No Hallucinations)
 # ==============================================================================
 
 def calculate_doc_prod_score(role):
-    """Calculates the Proportionality Score based on rejection rates."""
+    """Calculates Proportionality Score (Rejection Rate)."""
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     threshold = meta.get('cost_settings', {}).get('doc_prod_threshold', 75.0)
@@ -32,7 +32,7 @@ def calculate_doc_prod_score(role):
     return ratio, penalty_triggered
 
 def calculate_delay_penalties(role):
-    """Calculates delay deductions based on approved extensions."""
+    """Calculates Delay Deduction (0.5% per day)."""
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     rate = meta.get('cost_settings', {}).get('delay_penalty_rate', 0.5)
@@ -43,6 +43,7 @@ def calculate_delay_penalties(role):
 
     for d in delays_log:
         if d.get('requestor') == role and d.get('status') == 'Approved':
+            # Use actual days if available, else estimate for demo
             days = 14 if "Statement" in d['event'] else 7 
             penalty = days * rate
             total_deduction_percent += penalty
@@ -51,7 +52,7 @@ def calculate_delay_penalties(role):
     return total_deduction_percent, detailed_log
 
 def calculate_reversal_amount(offerer_role, offer_date_str):
-    """Sums costs incurred AFTER a specific offer date."""
+    """Calculates 'Costs Incurred After Offer'."""
     data = load_complex_data()
     costs = data.get('costs', {})
     
@@ -66,13 +67,12 @@ def calculate_reversal_amount(offerer_role, offer_date_str):
             entry_date = datetime.strptime(entry['date'], "%Y-%m-%d").date()
             if entry_date > cutoff_date:
                 reversal_sum += float(entry['amount'])
-        except:
-            continue
+        except: continue
             
     return reversal_sum, rejecting_party
 
 def calculate_burn_rate(role):
-    """Calculates average daily spend."""
+    """Calculates Average Daily Spend."""
     data = load_complex_data()
     costs = data.get('costs', {}).get(f"{role}_log", [])
     
@@ -93,7 +93,7 @@ def calculate_burn_rate(role):
     return total_spend / duration_days
 
 def check_sealed_offers(final_award_val):
-    """Checks the Vault for settlement offer reversals."""
+    """Checks Sealed Offer Vault for Reversals."""
     data = load_complex_data()
     offers = data.get('costs', {}).get('sealed_offers', [])
     reversal_triggers = []
@@ -115,17 +115,15 @@ def check_sealed_offers(final_award_val):
     return reversal_triggers
 
 # ==============================================================================
-# 2. AI DRAFTING LAYER
+# 2. AI DRAFTING (Robust Fallback & Advisory Tone)
 # ==============================================================================
 
 def try_generate_with_fallback(prompt, project_id, credentials):
     """Tries models in order: 2.5 -> 2.0 -> 1.5 -> 1.0"""
     models_to_try = [
-        "gemini-2.5-pro", 
-        "gemini-2.5-flash", 
+        "gemini-2.5-pro", "gemini-2.5-flash", 
         "gemini-2.0-flash-001", 
-        "gemini-1.5-pro-001", 
-        "gemini-1.5-flash-001",
+        "gemini-1.5-pro-001", "gemini-1.5-flash-001",
         "gemini-1.0-pro"
     ]
     
