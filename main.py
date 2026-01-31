@@ -29,12 +29,15 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
             with tab_login:
                 st.write("Enter your credentials.")
                 l_case = st.text_input("Case ID", key="l_case")
+                # NEW FIELD: Role Selection for Login
+                l_role = st.selectbox("I am the:", ["Claimant", "Respondent", "Arbitrator"], key="l_role")
                 l_email = st.text_input("Email", key="l_email")
                 l_pass = st.text_input("Password", type="password", key="l_pass")
                 
                 if st.button("Log In", type="primary"):
                     if l_case and l_email and l_pass:
-                        success, msg, role, meta = login_user(l_case, l_email, l_pass)
+                        # PASSING ROLE TO LOGIN FUNCTION
+                        success, msg, role, meta = login_user(l_case, l_email, l_pass, l_role)
                         if success:
                             st.session_state['active_case_id'] = l_case
                             st.session_state['user_role'] = role
@@ -51,7 +54,6 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
                 st.info("You need the unique Setup PIN sent to your email.")
                 
                 a_case = st.text_input("Case ID", key="a_case")
-                # NEW FIELD: Select Role to fix duplicate email confusion
                 a_role = st.selectbox("I am the:", ["Claimant", "Respondent", "Arbitrator"], key="a_role")
                 a_email = st.text_input("Your Email", key="a_email")
                 a_pin = st.text_input("Setup PIN (from Email)", key="a_pin")
