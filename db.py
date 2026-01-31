@@ -64,7 +64,6 @@ def get_all_cases_metadata():
     """Fetches a lightweight list of all cases for the LCIA Dashboard."""
     if not db: return []
     try:
-        # We only get the 'meta' field to save bandwidth
         docs = db.collection("arbitrations").stream()
         cases_list = []
         for doc in docs:
@@ -156,5 +155,7 @@ def send_email_notification(to_emails, subject, body):
             db.collection("arbitrations").document(cid).update({"complex_data.notifications": firestore.ArrayUnion([new_note])})
         except: pass
 
+# --- 6. LEGACY COMPATIBILITY (FIXES THE IMPORT ERROR) ---
 def reset_database():
+    """Dummy function to prevent import errors from old code."""
     pass
