@@ -10,14 +10,18 @@ from datetime import datetime
 @st.cache_resource
 def get_db():
     try:
-        # WE ADDED database="proceed" HERE TO FIX YOUR ERROR
+        # Tries to connect to the "proceed" database you created
         return firestore.Client.from_service_account_info(
             st.secrets["gcp_service_account"], 
             database="proceed"
         )
     except Exception as e:
-        st.error(f"DB Connection Error: {e}")
-        return None
+        # Fallback to default if "proceed" database isn't found
+        try:
+            return firestore.Client.from_service_account_info(st.secrets["gcp_service_account"])
+        except Exception as e2:
+            st.error(f"DB Connection Error: {e2}")
+            return None
 
 @st.cache_resource
 def get_storage_bucket():
@@ -34,17 +38,25 @@ def get_storage_bucket():
 db = get_db()
 bucket = get_storage_bucket()
 
-# --- 2. EMAIL HELPER ---
+# --- 2. EMAIL HELPER (WITH DEBUGGING) ---
 def send_email_via_smtp(to_list, subject, body):
-    """Sends a real email using the secrets configured in Streamlit."""
+    """Sends a real email and reports errors to the UI."""
+    # Robust credential fetching (checks top-level AND nested)
     smtp_user = st.secrets.get("ST_MAIL_USER")
     smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
-    smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
-    smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
+    
+    if not smtp_user:
+        # Try finding it inside the gcp block just in case
+        gcp_sec = st.secrets.get("gcp_service_account", {})
+        smtp_user = gcp_sec.get("ST_MAIL_USER")
+        smtp_pass = gcp_sec.get("ST_MAIL_PASSWORD")
 
     if not smtp_user or not smtp_pass:
-        print("Email skipped: No SMTP credentials found.")
+        st.warning("⚠️ Email not sent: ST_MAIL_USER or ST_MAIL_PASSWORD missing in secrets.")
         return False
+
+    smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
+    smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
 
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
@@ -60,13 +72,16 @@ def send_email_via_smtp(to_list, subject, body):
                 msg.attach(MIMEText(body, 'plain'))
                 server.send_message(msg)
         return True
+    except smtplib.SMTPAuthenticationError:
+        st.error("❌ Email Failed: Authentication Error. Check your App Password.")
+        return False
     except Exception as e:
-        print(f"Email failed: {e}")
+        st.error(f"❌ Email Failed: {e}")
         return False
 
 # --- 3. LCIA MASTER FUNCTIONS ---
 def create_new_case(case_name, claimant_email, respondent_email, arbitrator_email, access_pin="1234"):
-    """Creates a new case and notifies parties."""
+    """Creates a new case and notifies parties. Returns (ID, Email_Success_Bool)."""
     case_id = f"LCIA-{int(datetime.now().timestamp())}"
     
     new_case_data = {
@@ -94,6 +109,7 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         }
     }
     
+    email_success = False
     if db:
         db.collection("arbitrations").document(case_id).set(new_case_data)
         
@@ -115,9 +131,9 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         Regards,
         LCIA Registrar
         """
-        send_email_via_smtp(recipients, subject, body)
+        email_success = send_email_via_smtp(recipients, subject, body)
         
-    return case_id
+    return case_id, email_success
 
 def get_all_cases_metadata():
     """Fetches a list of all cases for the LCIA Dashboard."""
@@ -208,9 +224,7 @@ def send_email_notification(to_emails, subject, body):
     cid = get_active_case_id()
     if cid and db:
         try:
-            # 1. Log to DB
             new_note = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "to_roles": ["Recipients"], "subject": subject, "body": body}
             db.collection("arbitrations").document(cid).update({"complex_data.notifications": firestore.ArrayUnion([new_note])})
-            # 2. Send Real Email
             send_email_via_smtp(to_emails, subject, body)
         except: pass
