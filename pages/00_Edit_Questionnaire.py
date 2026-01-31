@@ -1,5 +1,5 @@
 import streamlit as st
-from db import load_structure, save_structure, set_release_status, get_release_status
+from db import load_structure, save_structure, set_release_status, get_release_status, load_full_config
 import time
 
 st.set_page_config(page_title="Edit Questionnaire", layout="wide")
@@ -8,6 +8,18 @@ role = st.session_state.get('user_role')
 if role not in ['lcia', 'arbitrator']:
     st.error("Access Denied")
     st.stop()
+
+# --- LOAD CONTEXT (THE FIX FOR CONFUSION) ---
+case_data = load_full_config()
+if not case_data:
+    st.error("No active case selected. Please return to the Dashboard.")
+    if st.button("Back to Dashboard"): st.switch_page("main.py")
+    st.stop()
+
+# --- HEADER: SHOW WHICH CASE WE ARE EDITING ---
+st.markdown(f"### ✏️ Editing Questionnaire for: {case_data['meta']['case_name']}")
+st.caption(f"Case ID: **{st.session_state['active_case_id']}** | Current Status: **{case_data['meta']['status']}**")
+st.divider()
 
 # --- DETERMINE PHASE ---
 if role == 'lcia':
@@ -37,14 +49,13 @@ with st.sidebar:
         st.page_link("pages/03_Smart_Timeline.py", label="Timeline & Logistics")
         st.page_link("pages/04_Cost_Management.py", label="Cost Management")
 
-st.title(f"✏️ {PAGE_TITLE}")
+st.subheader(f"{PAGE_TITLE}")
 
 # --- RELEASE STATUS ---
 status = get_release_status()
 is_released = status.get(CURRENT_PHASE, False)
 
 # --- MASTER LIST: PHASE 1 (LCIA) ---
-# Source: phase1_questionaire.docx
 DEFAULTS_PHASE_1 = [
     {
         "id": "p1_duration", 
@@ -136,7 +147,6 @@ DEFAULTS_PHASE_1 = [
 ]
 
 # --- MASTER LIST: PHASE 2 (ARBITRATOR) ---
-# Source: questionnaire.docx
 DEFAULTS_PHASE_2 = [
     # EMAIL COLLECTION (CRITICAL FOR PHASE 4)
     {
@@ -583,6 +593,7 @@ DEFAULTS_PHASE_2 = [
 
 # --- LOAD CORRECT DATA ---
 current_structure = load_structure(phase=CURRENT_PHASE)
+# If DB is empty for this phase, fallback to defaults
 if not current_structure:
     current_structure = DEFAULTS_PHASE_1 if role == 'lcia' else DEFAULTS_PHASE_2
 
