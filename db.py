@@ -89,6 +89,13 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
             "case_name": case_name,
             "created_at": datetime.now(),
             "status": "Phase 1: Initiation",
+            "merits_decided": False,
+            "final_award_amount": 0.0,
+            "cost_settings": {
+                "doc_prod_threshold": 75.0, 
+                "delay_penalty_rate": 0.5,
+                "hourly_caps": {}
+            },
             "setup_pins": pins,
             "parties": {
                 "claimant": claimant_email.strip().lower(), 
@@ -107,9 +114,19 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         "phase2_released": False,
         "responses": {},
         "complex_data": {
-            "timeline": [], "delays": [], "notifications": [],
+            "timeline": [], # Now supports amendment_history
+            "delays": [], 
+            "notifications": [],
             "doc_prod": {"claimant": [], "respondent": []}, 
-            "costs": {"claimant_log": [], "respondent_log": [], "tribunal_ledger": {"deposits": 0, "balance": 0, "history": []}, "app_tagging": []}
+            "costs": {
+                "claimant_log": [], 
+                "respondent_log": [], 
+                "tribunal_log": [],
+                "common_log": [],
+                "payment_requests": [],
+                "sealed_offers": []
+            }, 
+            "app_tagging": []
         }
     }
     
@@ -118,38 +135,14 @@ def create_new_case(case_name, claimant_email, respondent_email, arbitrator_emai
         db.collection("arbitrations").document(case_id).set(new_case_data)
         
         # EMAILS
-        c_body = f"""
-        Strictly Confidential - Claimant Access
-        Case: {case_name} (ID: {case_id})
-        
-        To activate your account, use this One-Time PIN:
-        PIN: {pins['claimant']}
-        
-        Go to: https://proceedai.streamlit.app/
-        """
+        c_body = f"Strictly Confidential - Claimant Access\nCase: {case_name}\nPIN: {pins['claimant']}\nLink: https://proceedai.streamlit.app/"
         if send_email_via_smtp(claimant_email, f"Activation: {case_name}", c_body): email_count += 1
 
-        r_body = f"""
-        Strictly Confidential - Respondent Access
-        Case: {case_name} (ID: {case_id})
-        
-        To activate your account, use this One-Time PIN:
-        PIN: {pins['respondent']}
-        
-        Go to: https://proceedai.streamlit.app/
-        """
+        r_body = f"Strictly Confidential - Respondent Access\nCase: {case_name}\nPIN: {pins['respondent']}\nLink: https://proceedai.streamlit.app/"
         if send_email_via_smtp(respondent_email, f"Activation: {case_name}", r_body): email_count += 1
             
         if arbitrator_email:
-            a_body = f"""
-            Strictly Confidential - Tribunal Access
-            Case: {case_name} (ID: {case_id})
-            
-            To activate your account, use this One-Time PIN:
-            PIN: {pins['arbitrator']}
-            
-            Go to: https://proceedai.streamlit.app/
-            """
+            a_body = f"Strictly Confidential - Tribunal Access\nCase: {case_name}\nPIN: {pins['arbitrator']}\nLink: https://proceedai.streamlit.app/"
             if send_email_via_smtp(arbitrator_email, f"Appointment: {case_name}", a_body): email_count += 1
         
     return case_id, email_count
@@ -173,67 +166,44 @@ def get_active_case_id():
 
 def activate_user_account(case_id, email, input_setup_pin, new_password, target_role):
     if not db: return False, "DB Error"
-    
     doc_ref = db.collection("arbitrations").document(case_id)
     doc = doc_ref.get()
-    
     if not doc.exists: return False, "Case ID not found."
     
     data = doc.to_dict()
     meta = data.get('meta', {})
     
-    # Clean Inputs
     target_role = target_role.lower()
     input_email = email.strip().lower()
     input_pin = input_setup_pin.strip()
     
-    # Validation
     registered_email = meta.get('parties', {}).get(target_role, '').lower()
-    if registered_email != input_email:
-        return False, f"Email mismatch. The email you entered is not registered for the {target_role}."
+    if registered_email != input_email: return False, f"Email mismatch for {target_role}."
 
     correct_pin = meta.get('setup_pins', {}).get(target_role)
-    if str(input_pin) != str(correct_pin):
-        return False, "Invalid Setup PIN."
+    if str(input_pin) != str(correct_pin): return False, "Invalid Setup PIN."
         
-    if meta.get('credentials', {}).get(target_role):
-        return False, "Account already activated. Please go to Login."
+    if meta.get('credentials', {}).get(target_role): return False, "Account already activated."
         
-    # Save Password
-    db.collection("arbitrations").document(case_id).update({
-        f"meta.credentials.{target_role}": new_password
-    })
-    
+    db.collection("arbitrations").document(case_id).update({f"meta.credentials.{target_role}": new_password})
     return True, f"Account activated! Welcome, {target_role.title()}."
 
 def login_user(case_id, email, password, role_attempt):
-    """
-    Logs in using Role + Private Password.
-    """
     if not db: return False, "DB Error", None, None
-    
     doc = db.collection("arbitrations").document(case_id).get()
     if not doc.exists: return False, "Case ID not found.", None, None
     
     data = doc.to_dict()
     meta = data.get('meta', {})
-    
     role_attempt = role_attempt.lower()
     input_email = email.strip().lower()
 
-    # 1. Check Email Match for Role
     registered_email = meta.get('parties', {}).get(role_attempt, '').lower()
-    if registered_email != input_email:
-        return False, f"Email mismatch for {role_attempt.title()}.", None, None
+    if registered_email != input_email: return False, "Email mismatch.", None, None
         
-    # 2. Check Password
     stored_password = meta.get('credentials', {}).get(role_attempt)
-    
-    if not stored_password:
-        return False, "Account not activated yet. Use the 'Activate Account' tab.", None, None
-        
-    if stored_password != password:
-        return False, "Incorrect Password.", None, None
+    if not stored_password: return False, "Account not activated.", None, None
+    if stored_password != password: return False, "Incorrect Password.", None, None
         
     return True, "Success", role_attempt, meta
 
@@ -250,20 +220,15 @@ def load_structure(phase="phase2"):
 
 def save_structure(new_questions, phase="phase2"):
     cid = get_active_case_id()
-    if cid and db:
-        db.collection("arbitrations").document(cid).update({phase: new_questions})
+    if cid and db: db.collection("arbitrations").document(cid).update({phase: new_questions})
 
 def get_release_status():
     data = load_full_config()
-    return {
-        "phase1": data.get("phase1_released", False),
-        "phase2": data.get("phase2_released", False)
-    }
+    return {"phase1": data.get("phase1_released", False), "phase2": data.get("phase2_released", False)}
 
 def set_release_status(phase, status=True):
     cid = get_active_case_id()
-    if cid and db:
-        db.collection("arbitrations").document(cid).update({f"{phase}_released": status})
+    if cid and db: db.collection("arbitrations").document(cid).update({f"{phase}_released": status})
 
 def load_responses(phase="phase2"):
     data = load_full_config()
@@ -271,8 +236,7 @@ def load_responses(phase="phase2"):
 
 def save_responses(all_resp, phase="phase2"):
     cid = get_active_case_id()
-    if cid and db:
-        db.collection("arbitrations").document(cid).update({"responses": all_resp})
+    if cid and db: db.collection("arbitrations").document(cid).update({"responses": all_resp})
 
 def load_complex_data():
     data = load_full_config()
@@ -280,8 +244,7 @@ def load_complex_data():
 
 def save_complex_data(key, sub_data):
     cid = get_active_case_id()
-    if cid and db:
-        db.collection("arbitrations").document(cid).update({f"complex_data.{key}": sub_data})
+    if cid and db: db.collection("arbitrations").document(cid).update({f"complex_data.{key}": sub_data})
 
 def upload_file_to_cloud(uploaded_file):
     if not bucket or not uploaded_file: return None
@@ -299,8 +262,7 @@ def send_email_notification(to_emails, subject, body):
         try:
             new_note = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "to_roles": ["Recipients"], "subject": subject, "body": body}
             db.collection("arbitrations").document(cid).update({"complex_data.notifications": firestore.ArrayUnion([new_note])})
-            for email in to_emails:
-                send_email_via_smtp(email, subject, body)
+            for email in to_emails: send_email_via_smtp(email, subject, body)
         except: pass
 
 def reset_database(): pass
