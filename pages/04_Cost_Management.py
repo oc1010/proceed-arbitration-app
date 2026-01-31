@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 from db import load_complex_data, save_complex_data, load_responses, send_email_notification, upload_file_to_cloud, load_full_config, db
-from ai_logic import generate_cost_award_draft, check_sealed_offers
+# Import from the cleaned ai_logic file
+from ai_logic import generate_cost_award_draft, generate_word_document
 
 st.set_page_config(page_title="Cost Management", layout="wide")
 
 role = st.session_state.get('user_role')
-case_id = st.session_state.get('active_case_id') # Ensure case_id is available
+case_id = st.session_state.get('active_case_id')
 
 if not role or not case_id:
     st.error("Access Denied.")
@@ -21,15 +22,8 @@ with st.sidebar:
     st.page_link("main.py", label="🏠 Home Dashboard")
     
     if role == 'arbitrator':
-        st.page_link("pages/00_Edit_Questionnaire.py", label="✏️ Edit Questionnaires")
-        st.page_link("pages/01_Drafting_Engine.py", label="📝 PO1 Drafting")
-        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
     elif role in ['claimant', 'respondent']:
-        st.page_link("pages/00_Fill_Questionnaire.py", label="📝 Fill Questionnaires")
-        st.page_link("pages/02_Doc_Production.py", label="📂 Doc Production")
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
         st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
         
     st.divider()
@@ -50,223 +44,213 @@ costs = data.get("costs", {
 meta = load_full_config().get("meta", {})
 merits_decided = meta.get("merits_decided", False)
 
-# --- HELPER ---
-def get_party_emails():
-    p2 = load_responses("phase2")
-    c = p2.get('claimant', {}).get('contact_email')
-    r = p2.get('respondent', {}).get('contact_email')
-    return [e for e in [c, r] if e]
+# --- HELPER: DOUBLE BLIND VISIBILITY ---
+def can_view_log(owner_role):
+    """
+    Double-Blind Interface Logic.
+    - Parties see only their own costs.
+    - Common costs are visible to all.
+    - UNLOCK: After merits decided, unlocks for Arbitrator AND Parties.
+    """
+    if owner_role == 'common': return True
+    if merits_decided: return True # Unlocks for everyone
+    if role == owner_role: return True # See own
+    if role == 'arbitrator': return True # Tribunal sees all logs (private view)
+    return False
 
-# --- TAB LOGIC ---
-tab_names = ["🧾 Ongoing Costs", "💸 Payment Requests", "🏁 Final Submission", "🔒 Sealed Offers"]
-if role == 'arbitrator':
-    tab_names.append("🤖 AI Final Award") # Only Tribunal sees AI tab
-
-tabs = st.tabs(tab_names)
+# --- TABS ---
+tabs = st.tabs(["📝 Cost Logging", "💸 Payment Requests", "🏁 Final Submission", "🔒 Sealed Offers", "🤖 AI Final Award"])
 
 # ==============================================================================
-# TAB 1: ONGOING COSTS
+# TAB 1: COST LOGGING
 # ==============================================================================
 with tabs[0]:
-    st.subheader("Interim Cost Tracking")
+    st.subheader("Cost Logging")
     
-    # 1. Input Form
-    if role in ['claimant', 'respondent', 'arbitrator']:
-        with st.form("cost_add"):
+    # 1. INPUT FORM
+    with st.expander(f"➕ Log New Expense ({role.title()})", expanded=False):
+        with st.form("log_cost"):
             c1, c2 = st.columns(2)
-            desc = c1.text_input("Description (e.g. Legal Fees, Expert)")
-            amt = c2.number_input("Amount (EUR)", min_value=0.0)
-            d_inc = c1.date_input("Date Incurred")
-            pdf = c2.file_uploader("Upload Invoice (PDF)")
+            phase = c1.selectbox("Phase", ["Phase 1: Initiation", "Phase 2: Written Subs", "Phase 3: Doc Prod", "Phase 4: Hearing"]) 
             
-            if st.form_submit_button("Add Cost Item"):
-                file_link = "No file"
-                if pdf:
-                    with st.spinner("Uploading to Secure Cloud..."):
-                        uploaded_name = upload_file_to_cloud(pdf)
-                        if uploaded_name: file_link = uploaded_name
-                
-                key = f"{role}_log"
-                # Arbitrator logs to their own list, but visually separated
-                if role == 'arbitrator': key = "tribunal_log" # Ensure this key exists in db structure logic if needed, or map to common
-
+            if role == 'arbitrator':
+                cats = ["Tribunal Fees (Hours)", "Administrative", "Travel", "Drafting"]
+                category = c2.selectbox("Category / Hours Spent", cats)
+            else:
+                cats = ["Legal Fees", "Expert Fees", "Transcripts", "e-Bundles", "Tribunal Fees"]
+                category = c2.selectbox("Category", cats)
+            
+            c3, c4 = st.columns(2)
+            d_exp = c3.date_input("Date of Expenditure")
+            amt = c4.number_input("Amount (EUR)", min_value=0.0)
+            
+            is_common = st.checkbox("Mark as Common/Arbitration Cost (Visible to All)") 
+            
+            if st.form_submit_button("Log Expense"):
                 entry = {
-                    "date": str(d_inc), "desc": desc, "amount": amt, 
-                    "file": file_link, 
-                    "submitted_on": str(date.today())
+                    "phase": phase, "category": category, 
+                    "date": str(d_exp), "amount": amt, 
+                    "logged_by": role
                 }
+                target_list = "common_log" if is_common else f"{role}_log"
                 
-                # Safety check for list existence
-                if key not in costs: costs[key] = []
-                costs[key].append(entry)
+                if target_list not in costs: costs[target_list] = []
+                costs[target_list].append(entry)
                 save_complex_data("costs", costs)
-                st.success("Cost item recorded.")
+                st.success("Expense Logged.")
                 st.rerun()
-    
-    st.divider()
-    
-    # 2. View Logs (Double Blind Logic)
-    # Parties see only their own. Tribunal sees all.
-    c1, c2 = st.columns(2)
-    
-    with c1:
-        st.write("#### Claimant's Running Costs")
-        if role == 'claimant' or role == 'arbitrator' or merits_decided:
-            if costs.get("claimant_log"): 
-                st.dataframe(pd.DataFrame(costs["claimant_log"]), use_container_width=True)
-            else: st.info("No logs.")
-        else:
-            st.warning("🔒 HIDDEN (Double-Blind Active)")
 
-    with c2:
-        st.write("#### Respondent's Running Costs")
-        if role == 'respondent' or role == 'arbitrator' or merits_decided:
-            if costs.get("respondent_log"): 
-                st.dataframe(pd.DataFrame(costs["respondent_log"]), use_container_width=True)
-            else: st.info("No logs.")
-        else:
-            st.warning("🔒 HIDDEN (Double-Blind Active)")
+    st.divider()
+
+    # 2. PRIVATE COST SUMMARY
+    st.markdown(f"### 🔐 Private Cost Summary ({role.title()})")
+    my_private_data = costs.get(f"{role}_log", [])
+    if my_private_data:
+        st.dataframe(pd.DataFrame(my_private_data), use_container_width=True)
+    else:
+        st.info("No private costs logged yet.")
+
+    # 3. ARBITRATION COST SUMMARY (COMMON)
+    st.markdown("### 🌍 Arbitration Cost Summary (Common)")
+    common_data = costs.get("common_log", [])
+    if common_data:
+        st.dataframe(pd.DataFrame(common_data), use_container_width=True)
+    else:
+        st.caption("No common costs logged yet.")
 
 # ==============================================================================
-# TAB 2: PAYMENT REQUESTS & LEDGER
+# TAB 2: PAYMENT REQUESTS
 # ==============================================================================
 with tabs[1]:
-    st.subheader("Tribunal Advances & Deposits")
-    ledger = costs.get("tribunal_ledger", {"deposits": 0, "balance": 0, "history": []})
+    st.subheader("Financial Management")
     
-    m1, m2 = st.columns(2)
-    m1.metric("Total Deposits Received", f"€{ledger.get('deposits', 0):,.2f}")
-    m2.metric("Current Balance", f"€{ledger.get('balance', 0):,.2f}")
-    
+    # ARBITRATOR: REQUEST PAYMENT
     if role == 'arbitrator':
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("#### Record Incoming Payment")
-            with st.form("add_dep"):
-                dep_amt = st.number_input("Amount Received (€)", min_value=0.0)
-                payer = st.radio("From", ["Claimant", "Respondent"])
-                if st.form_submit_button("Record Deposit"):
-                    ledger['deposits'] += dep_amt
-                    ledger['balance'] += dep_amt
-                    ledger['history'].append(f"Received +€{dep_amt} from {payer} ({date.today()})")
-                    costs['tribunal_ledger'] = ledger
-                    save_complex_data("costs", costs)
-                    st.success("Recorded.")
-                    st.rerun()
-        with c2:
-            st.write("#### Requests")
-            if st.button("⚠️ Send Advance Payment Request"):
-                send_email_notification(get_party_emails(), "Advance Payment Request", "The Tribunal requests a further advance on costs. Please log in to view details.")
-                st.success("Notifications sent to parties.")
+        st.write("#### 📤 Request Payment / Deposit")
+        with st.form("req_pay"):
+            c1, c2 = st.columns(2)
+            dep_type = c1.selectbox("Deposit Type", ["Administrative Fees", "Tribunal Fees", "Hearing Expenses", "Expert / Specialist Fund"])
+            p_amt = c2.number_input("Amount Requested (€)", min_value=0.0)
+            
+            c3, c4 = st.columns(2)
+            p_due = c3.date_input("Due Date")
+            payer = c4.radio("Payable By", ["Claimant", "Respondent", "Split 50/50"])
+            
+            if st.form_submit_button("Send Payment Order"):
+                req = {
+                    "type": dep_type, "amount": p_amt, 
+                    "due": str(p_due), "payer": payer, 
+                    "status": "Pending"
+                }
+                if "payment_requests" not in costs: costs["payment_requests"] = []
+                costs["payment_requests"].append(req)
+                save_complex_data("costs", costs)
+                st.success("Payment Order Logged.")
+                st.rerun()
+
+    # ALL: VIEW REQUESTS
+    st.write("#### 📜 Payment / Deposit Requests")
+    reqs = costs.get("payment_requests", [])
+    if reqs:
+        st.dataframe(pd.DataFrame(reqs), use_container_width=True)
+    else:
+        st.info("No active payment requests.")
 
 # ==============================================================================
 # TAB 3: FINAL SUBMISSION
 # ==============================================================================
 with tabs[2]:
     st.subheader("Final Statement of Costs")
-    st.info("Formal Cost Submission (Form H) at the end of proceedings.")
-    
     if role in ['claimant', 'respondent']:
-        with st.form("final_sub_form"):
-            total_claimed = st.number_input("Total Costs Claimed (EUR)", min_value=0.0)
-            final_pdf = st.file_uploader("Upload Final Cost Schedule (PDF/Excel)")
-            
-            if st.form_submit_button("Submit Final Costs"):
-                file_link = "No file"
-                if final_pdf:
-                    uploaded_name = upload_file_to_cloud(final_pdf)
-                    if uploaded_name: file_link = uploaded_name
-
-                sub_entry = {
-                    "party": role, "date": str(date.today()),
-                    "total": total_claimed, "file": file_link
-                }
-                if "final_submissions" not in costs: costs["final_submissions"] = []
-                costs["final_submissions"].append(sub_entry)
+        with st.form("final_sub"):
+            total = st.number_input("Total Claimed (€)", min_value=0.0)
+            if st.form_submit_button("Submit Final Statement"):
+                costs['final_submissions'].append({"party": role, "amount": total, "date": str(date.today())})
                 save_complex_data("costs", costs)
-                st.success("Final submission received.")
-    
-    if costs.get("final_submissions"):
-        st.write("### Received Submissions")
-        st.dataframe(pd.DataFrame(costs["final_submissions"]), use_container_width=True)
-    else:
-        st.caption("No final submissions yet.")
+                st.success("Submitted.")
 
 # ==============================================================================
-# TAB 4: SEALED OFFERS (Settlement Vault)
+# TAB 4: SEALED OFFERS
 # ==============================================================================
 with tabs[3]:
-    st.subheader("✉️ Sealed Settlement Offers")
-    st.info("Offers uploaded here are ENCRYPTED. The Tribunal is notified that an offer exists, but cannot see the amount/content until the Final Award value is entered.")
+    st.subheader("✉️ Settlement Offer Vault")
+    st.info("Offers are ENCRYPTED. The Tribunal sees existence but not amount until the Award.")
     
-    # UPLOAD (Parties Only)
     if role in ['claimant', 'respondent']:
         with st.form("sealed_offer"):
             offer_amt = st.number_input("Settlement Offer Amount (€)", min_value=0.0)
-            offer_doc = st.file_uploader("Upload Formal Offer Letter (PDF)")
-            
             if st.form_submit_button("Submit Sealed Offer"):
                 entry = {
-                    "offerer": role,
-                    "amount": offer_amt,
-                    "date": str(date.today()),
-                    "status": "Sealed"
+                    "offerer": role, "amount": offer_amt,
+                    "date": str(date.today()), "status": "Sealed"
                 }
                 if "sealed_offers" not in costs: costs["sealed_offers"] = []
                 costs["sealed_offers"].append(entry)
                 save_complex_data("costs", costs)
                 st.success("Offer Sealed and Submitted.")
 
-    # VIEW (Tribunal View)
     if role == 'arbitrator':
         offers = costs.get("sealed_offers", [])
         if offers:
             st.write(f"⚠️ **{len(offers)} Sealed Offer(s) Detected**")
             for i, o in enumerate(offers):
+                # Reveal logic based on merits_decided
                 status_txt = f"**Offer #{i+1}** | Date: {o['date']} | Status: **{o['status']}**"
                 if not merits_decided:
                     st.info(f"{status_txt} (Locked 🔒)")
                 else:
                     st.success(f"{status_txt} - 🔓 REVEALED: €{o['amount']:,.2f} by {o['offerer'].title()}")
-        else:
-            st.write("No sealed offers on file.")
 
 # ==============================================================================
 # TAB 5: AI FINAL AWARD (Tribunal Only)
 # ==============================================================================
 if role == 'arbitrator':
     with tabs[4]:
-        st.subheader("🤖 AI Final Award on Costs")
+        st.subheader("🤖 AI Cost Allocation Recommendation")
+        st.info("This tool acts as a 'Tribunal Secretary', analyzing the hard data to propose a logical cost split.")
         
         # 1. TRIGGER MERITS DECISION
         st.write("#### 1. Merits Phase Completion")
         is_decided = st.checkbox("✅ Declare Merits Decision Rendered", value=merits_decided)
-        
         if is_decided != merits_decided:
             db.collection("arbitrations").document(case_id).update({"meta.merits_decided": is_decided})
             st.rerun()
 
         if is_decided:
-            st.success("🔓 Costs Unlocked! Double-Blind deactivated.")
-            
-            # 2. FINAL AWARD VALUE (Required for Sealed Offer Logic)
-            st.write("#### 2. Enter Award Value")
+            # 2. INPUT AWARD VALUE
             award_val = st.number_input("Final Principal Award Amount (€)", value=meta.get("final_award_amount", 0.0))
-            
-            if st.button("Update Award Value"):
-                db.collection("arbitrations").document(case_id).update({"meta.final_award_amount": award_val})
-                st.toast("Value Updated")
-                
-            # 3. GENERATE REASONING
+            if st.button("Save Award Value"):
+                 db.collection("arbitrations").document(case_id).update({"meta.final_award_amount": award_val})
+                 st.toast("Value Saved")
+
             st.divider()
-            st.write("#### 3. Generate Reasoned Cost Decision")
             
-            if st.button("✨ Generate Cost Allocation with Vertex AI"):
-                with st.spinner("Analyzing Document Production stats, Delays, and Sealed Offers..."):
+            # 3. GENERATE & DOWNLOAD
+            col1, col2 = st.columns(2)
+            
+            if "ai_draft" not in st.session_state:
+                st.session_state["ai_draft"] = ""
+
+            with col1:
+                st.write("#### 1. Generate Analysis")
+                if st.button("✨ Draft Recommendation (Vertex AI)", type="primary"):
+                    with st.spinner("Reviewing conduct, delays, and sealed offers..."):
+                        # Calls the function from ai_logic.py
+                        st.session_state["ai_draft"] = generate_cost_award_draft(case_id, award_val)
+            
+            if st.session_state["ai_draft"]:
+                st.markdown("---")
+                st.markdown("### 📝 Draft Recommendation")
+                st.write(st.session_state["ai_draft"])
+                
+                with col2:
+                    st.write("#### 2. Export")
+                    # Uses the doc generator from ai_logic.py
+                    docx = generate_word_document(case_id, st.session_state["ai_draft"], award_val)
                     
-                    # --- FIX: PASS BOTH ARGUMENTS HERE ---
-                    draft_text = generate_cost_award_draft(case_id, award_val) 
-                    # -------------------------------------
-                    
-                    st.markdown(draft_text)
+                    st.download_button(
+                        label="📄 Download Formal Word Doc (.docx)",
+                        data=docx,
+                        file_name=f"Cost_Recommendation_{case_id}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
