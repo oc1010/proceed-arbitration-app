@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db, reset_database
+# FIX: Removed 'reset_database' from this list to prevent the crash
+from db import create_new_case, get_active_case_id, load_full_config, verify_case_access, get_all_cases_metadata, db
 
 st.set_page_config(page_title="PROCEED | Arbitration Cloud", layout="wide")
 
@@ -65,6 +66,7 @@ if not st.session_state['active_case_id'] and not st.session_state['is_lcia_admi
 if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
     st.title("🏛️ LCIA Registrar Console")
     
+    # Two clear tabs for managing cases vs creating new ones
     tab_list, tab_new = st.tabs(["📂 Active Cases & Management", "➕ Initiate New Proceedings"])
     
     # --- TAB 1: LIST OF CASES (MANAGE) ---
@@ -110,6 +112,7 @@ if st.session_state['is_lcia_admin'] and not st.session_state['active_case_id']:
                 if st.form_submit_button("🚀 Initiate Proceedings"):
                     if c_name:
                         with st.spinner("Creating Case & Notifying Parties..."):
+                            # This calls the updated db.py function with 5 arguments
                             new_id = create_new_case(c_name, c_email, r_email, arb_email, access_pin)
                             st.session_state['active_case_id'] = new_id
                             st.success(f"Case {new_id} Created! Redirecting to Workspace...")
