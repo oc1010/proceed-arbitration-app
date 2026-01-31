@@ -30,9 +30,39 @@ def get_storage_bucket():
 db = get_db()
 bucket = get_storage_bucket()
 
-# --- 2. LCIA MASTER FUNCTIONS ---
-def create_new_case(case_name, claimant_email, respondent_email, access_pin="1234"):
-    """Creates a new case. Only called by LCIA Admin."""
+# --- 2. EMAIL HELPER ---
+def send_email_via_smtp(to_list, subject, body):
+    """Sends a real email using the secrets configured in Streamlit."""
+    smtp_user = st.secrets.get("ST_MAIL_USER")
+    smtp_pass = st.secrets.get("ST_MAIL_PASSWORD")
+    smtp_server = st.secrets.get("ST_MAIL_SERVER", "smtp.gmail.com")
+    smtp_port = st.secrets.get("ST_MAIL_PORT", 587)
+
+    if not smtp_user or not smtp_pass:
+        print("Email skipped: No SMTP credentials found.")
+        return False
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            
+            for recipient in to_list:
+                if not recipient: continue
+                msg = MIMEMultipart()
+                msg['From'] = smtp_user
+                msg['To'] = recipient
+                msg['Subject'] = f"[PROCEED] {subject}"
+                msg.attach(MIMEText(body, 'plain'))
+                server.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"Email failed: {e}")
+        return False
+
+# --- 3. LCIA MASTER FUNCTIONS ---
+def create_new_case(case_name, claimant_email, respondent_email, arbitrator_email, access_pin="1234"):
+    """Creates a new case and notifies parties."""
     case_id = f"LCIA-{int(datetime.now().timestamp())}"
     
     new_case_data = {
@@ -42,7 +72,11 @@ def create_new_case(case_name, claimant_email, respondent_email, access_pin="123
             "created_at": datetime.now(),
             "status": "Phase 1: Initiation",
             "access_pin": access_pin,
-            "parties": {"claimant": claimant_email, "respondent": respondent_email}
+            "parties": {
+                "claimant": claimant_email, 
+                "respondent": respondent_email,
+                "arbitrator": arbitrator_email
+            }
         },
         "phase1": [], 
         "phase2": [],
@@ -58,13 +92,33 @@ def create_new_case(case_name, claimant_email, respondent_email, access_pin="123
     
     if db:
         db.collection("arbitrations").document(case_id).set(new_case_data)
+        
+        # SEND WELCOME EMAIL
+        recipients = [claimant_email, respondent_email, arbitrator_email]
+        subject = f"Notice of Arbitration: {case_name}"
+        body = f"""
+        Strictly Confidential
+        
+        The LCIA has registered a new arbitration matter: {case_name}.
+        
+        ACCESS CREDENTIALS:
+        -------------------
+        Case ID: {case_id}
+        Access PIN: {access_pin}
+        
+        Please log in at: https://proceedai.streamlit.app/
+        
+        Regards,
+        LCIA Registrar
+        """
+        send_email_via_smtp(recipients, subject, body)
+        
     return case_id
 
 def get_all_cases_metadata():
-    """Fetches a lightweight list of all cases for the LCIA Dashboard."""
+    """Fetches a list of all cases for the LCIA Dashboard."""
     if not db: return []
     try:
-        # We only get the 'meta' field to save bandwidth
         docs = db.collection("arbitrations").stream()
         cases_list = []
         for doc in docs:
@@ -76,12 +130,11 @@ def get_all_cases_metadata():
         st.error(f"Error fetching case list: {e}")
         return []
 
-# --- 3. PARTY ACCESS FUNCTIONS ---
+# --- 4. PARTY ACCESS FUNCTIONS ---
 def get_active_case_id():
     return st.session_state.get('active_case_id')
 
 def verify_case_access(case_id, pin_attempt):
-    """Checks if Case ID exists and PIN matches."""
     if not db: return False, None
     doc = db.collection("arbitrations").document(case_id).get()
     if doc.exists:
@@ -91,7 +144,7 @@ def verify_case_access(case_id, pin_attempt):
             return True, data['meta']
     return False, None
 
-# --- 4. STANDARD DATA LOADERS ---
+# --- 5. STANDARD DATA LOADERS ---
 def load_full_config():
     cid = get_active_case_id()
     if not cid or not db: return {}
@@ -137,7 +190,6 @@ def save_complex_data(key, sub_data):
     if cid and db:
         db.collection("arbitrations").document(cid).update({f"complex_data.{key}": sub_data})
 
-# --- 5. CLOUD STORAGE & EMAIL ---
 def upload_file_to_cloud(uploaded_file):
     if not bucket or not uploaded_file: return None
     try:
@@ -152,11 +204,14 @@ def send_email_notification(to_emails, subject, body):
     cid = get_active_case_id()
     if cid and db:
         try:
+            # 1. Log to DB
             new_note = {"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "to_roles": ["Recipients"], "subject": subject, "body": body}
             db.collection("arbitrations").document(cid).update({"complex_data.notifications": firestore.ArrayUnion([new_note])})
+            # 2. Send Real Email
+            send_email_via_smtp(to_emails, subject, body)
         except: pass
 
-# --- 6. LEGACY COMPATIBILITY (FIXES THE CRASH) ---
+# --- 6. CRITICAL FIX: DUMMY FUNCTION ---
 def reset_database():
-    """Dummy function to prevent import errors from old code."""
+    """Exists solely to prevent ImportError in main.py."""
     pass
