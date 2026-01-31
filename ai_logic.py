@@ -7,11 +7,14 @@ from google.api_core.exceptions import NotFound, Forbidden, ServiceUnavailable, 
 from db import load_complex_data, load_full_config
 
 # ==============================================================================
-# 1. DETERMINISTIC CALCULATION ENGINE (NO AI HALLUCINATIONS)
+# 1. DETERMINISTIC CALCULATION ENGINE (Hard Math - No Hallucinations)
 # ==============================================================================
 
 def calculate_doc_prod_score(role):
-    """Calculates the 'Proportionality Score' strictly via math."""
+    """
+    Calculates the 'Proportionality Score' strictly via math.
+    Source: Cost Allocation Tool (AI)
+    """
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     threshold = meta.get('cost_settings', {}).get('doc_prod_threshold', 75.0)
@@ -28,7 +31,10 @@ def calculate_doc_prod_score(role):
     return ratio, penalty_triggered
 
 def calculate_delay_penalties(role):
-    """Calculates delay deductions based on 'Approved' extension requests."""
+    """
+    Calculates delay deductions based on 'Approved' extension requests.
+    Source: Cost Allocation Tool (AI)
+    """
     data = load_complex_data()
     meta = load_full_config().get('meta', {})
     rate = meta.get('cost_settings', {}).get('delay_penalty_rate', 0.5)
@@ -39,7 +45,8 @@ def calculate_delay_penalties(role):
 
     for d in delays_log:
         if d.get('requestor') == role and d.get('status') == 'Approved':
-            days = 7 # Estimated for demo logic
+            # For demo purposes, we estimate typical delay lengths if precise days aren't logged
+            days = 14 if "Statement" in d['event'] else 7 
             penalty = days * rate
             total_deduction_percent += penalty
             detailed_log.append(f"{d['event']} ({days} days @ {rate}%/day)")
@@ -47,10 +54,14 @@ def calculate_delay_penalties(role):
     return total_deduction_percent, detailed_log
 
 def calculate_reversal_amount(offerer_role, offer_date_str):
-    """Filters and sums costs incurred AFTER the specific cut-off date."""
+    """
+    Filters and sums costs incurred AFTER the specific cut-off date.
+    Source: Cost Allocation Tool (AI)
+    """
     data = load_complex_data()
     costs = data.get('costs', {})
     
+    # The Party who REJECTED the offer (the Opposing Party) is the one who pays
     rejecting_party = 'respondent' if offerer_role == 'claimant' else 'claimant'
     target_log = costs.get(f"{rejecting_party}_log", [])
     
@@ -68,7 +79,10 @@ def calculate_reversal_amount(offerer_role, offer_date_str):
     return reversal_sum, rejecting_party
 
 def calculate_burn_rate(role):
-    """Calculates average spend per day."""
+    """
+    Calculates average spend per day to detect inflation/reasonableness.
+    Source: Cost Allocation Tool (AI)
+    """
     data = load_complex_data()
     costs = data.get('costs', {}).get(f"{role}_log", [])
     
@@ -89,12 +103,11 @@ def calculate_burn_rate(role):
     
     return total_spend / duration_days
 
-# ==============================================================================
-# 2. LOGIC CONTROLLER
-# ==============================================================================
-
 def check_sealed_offers(final_award_val):
-    """Checks the 'Vault' for any offers higher than the Award."""
+    """
+    Checks the 'Vault' for any offers higher than the Award.
+    Source: Cost Allocation Tool (AI)
+    """
     data = load_complex_data()
     offers = data.get('costs', {}).get('sealed_offers', [])
     reversal_triggers = []
@@ -116,7 +129,7 @@ def check_sealed_offers(final_award_val):
     return reversal_triggers
 
 # ==============================================================================
-# 3. AI DRAFTING LAYER (ROBUST MULTI-MODEL FALLBACK)
+# 2. AI DRAFTING LAYER (Robust Multi-Model Fallback)
 # ==============================================================================
 
 def try_generate_with_fallback(prompt, project_id, credentials):
@@ -125,11 +138,10 @@ def try_generate_with_fallback(prompt, project_id, credentials):
     Falls back sequentially if a model is 404 Not Found or 403 Forbidden.
     """
     
-    # PRIORITY LIST based on your screenshot (Newest 2.5 -> 2.0 -> Legacy 1.5/1.0)
+    # PRIORITY LIST (Newest 2.5 -> 2.0 -> Legacy 1.5/1.0)
     models_to_try = [
         "gemini-2.5-pro",           # Best available (June 2025 release)
         "gemini-2.5-flash",         # Fast alternative
-        "gemini-2.5-flash-lite",    # Lightweight alternative
         "gemini-2.0-flash-001",     # Previous stable (Feb 2025)
         "gemini-1.5-pro-001",       # Legacy stable
         "gemini-1.5-flash-001",     # Legacy fast
@@ -147,11 +159,8 @@ def try_generate_with_fallback(prompt, project_id, credentials):
     # Loop through models
     for model_name in models_to_try:
         try:
-            # print(f"Attempting with model: {model_name}...") # Debug log (optional)
             model = GenerativeModel(model_name)
             response = model.generate_content(prompt)
-            
-            # If successful, return immediately
             return response.text
             
         except (NotFound, Forbidden, InvalidArgument, ServiceUnavailable) as e:
@@ -190,24 +199,35 @@ def generate_cost_award_draft(case_id, final_award_val):
         
         reversals = check_sealed_offers(final_award_val) if final_award_val else []
         
-        # B. CONSTRUCT PROMPT
+        # B. CONSTRUCT PROMPT (THE "JUNIOR ASSOCIATE" PERSONA)
+        # We explicitly instruct the AI to be deferential and data-driven.
         prompt = f"""
-        You are an International Arbitrator drafting the 'Final Award on Costs' for Case {case_id}.
+        You are acting as the Tribunal Secretary preparing a DRAFT Cost Allocation Memorandum for the Sole Arbitrator in Case {case_id}.
         
-        DATA:
-        1. CONDUCT:
-        - Claimant: {c_score:.1f}% Doc Rejection. Burn Rate: €{c_burn:,.2f}/day.
-        - Respondent: {r_score:.1f}% Doc Rejection. Burn Rate: €{r_burn:,.2f}/day.
-        *Rule: Rejection >75% triggers 100% cost penalty.*
+        YOUR TASK:
+        Provide a reasoned recommendation for cost allocation based SOLELY on the hard data below. 
+        Use professional, neutral legal language. 
+        Do NOT decide the case; explicitly frame conclusions as "recommendations based on the data" subject to Tribunal discretion.
         
-        2. DELAYS:
-        - Claimant: -{c_delay_pct}% deduction. Reason: {c_log}
-        - Respondent: -{r_delay_pct}% deduction. Reason: {r_log}
+        HARD DATA FROM CASE MANAGEMENT SYSTEM:
         
-        3. SEALED OFFERS:
-        {f"- TRIGGERED: {reversals[0]['payer']} pays {reversals[0]['offerer']} post-offer costs of €{reversals[0]['reversal_sum']:,.2f}" if reversals else "- None triggered."}
+        1. DOCUMENT PRODUCTION CONDUCT (Proportionality Metric):
+        - Claimant: {c_score:.1f}% of requests were Denied. (Burn Rate: €{c_burn:,.2f}/day)
+        - Respondent: {r_score:.1f}% of requests were Denied. (Burn Rate: €{r_burn:,.2f}/day)
+        *Framework Rule: A rejection rate >75% is flagged as potentially excessive.*
         
-        Draft a formal legal analysis (3 paragraphs) determining the net cost allocation.
+        2. PROCEDURAL EFFICIENCY (Delay Penalties):
+        - Claimant: {c_delay_pct}% total deduction recommended. Details: {c_log}
+        - Respondent: {r_delay_pct}% total deduction recommended. Details: {r_log}
+        *Framework Rule: 0.5% cost deduction per 24h of non-consensual delay.*
+        
+        3. SETTLEMENT BEHAVIOR (Sealed Offer Vault):
+        {f"- ALERT: A Sealed Offer was rejected. The Award is LESS favorable than the offer. The Rejecting Party ({reversals[0]['payer']}) should typically bear costs incurred after {reversals[0]['offer_date']} (approx €{reversals[0]['reversal_sum']:,.2f})." if reversals else "- No sealed offers triggered a reversal."}
+        
+        DRAFTING STRUCTURE:
+        1. **Analysis of Conduct:** Compare the parties' document production ratios and efficiency, citing the burn rates.
+        2. **Financial Implications:** Apply the specific penalties calculated above.
+        3. **Recommendation:** Summarize the net allocation (e.g., "Claimant should recover X% of costs"), subject to the Tribunal's final discretion.
         """
         
         # C. GENERATE USING FALLBACK LOGIC
