@@ -1,13 +1,12 @@
 import streamlit as st
-import pandas as pd
-from db import load_complex_data, save_complex_data, upload_file_to_cloud, load_full_config
+from db import load_complex_data, save_complex_data, load_full_config
 
 st.set_page_config(page_title="Document Production", layout="wide")
 
-# --- AUTHENTICATION ---
 role = st.session_state.get('user_role')
-if not role: 
-    st.error("Access Denied"); st.stop()
+if not role:
+    st.error("Access Denied.")
+    st.stop()
 
 # --- SIDEBAR ---
 with st.sidebar:
@@ -15,183 +14,118 @@ with st.sidebar:
     st.divider()
     st.page_link("main.py", label="🏠 Home")
     if role == 'arbitrator':
-        st.page_link("pages/03_Smart_Timeline.py", label="📅 Procedural Timetable")
-        st.page_link("pages/02_Doc_Production.py", label="📂 Document Production")
+        st.page_link("pages/03_Smart_Timeline.py", label="📅 Timeline")
+        st.page_link("pages/04_Cost_Management.py", label="💰 Costs")
+    st.divider()
+    if st.button("Logout"): 
+        st.session_state['user_role'] = None
+        st.switch_page("main.py")
 
-# --- LOAD SETTINGS & DATA ---
+st.title("📂 Phase 3: Document Production")
+st.info("Digital Redfern Schedule: Decisions made here directly impact the Final Cost Allocation (Proportionality Score).")
+
+# --- LOAD DATA ---
 data = load_complex_data()
 doc_prod = data.get("doc_prod", {"claimant": [], "respondent": []})
-meta = load_full_config().get('meta', {})
-threshold = meta.get('cost_settings', {}).get('doc_prod_threshold', 75.0) # 
+meta = load_full_config().get("meta", {})
+threshold = meta.get("cost_settings", {}).get("doc_prod_threshold", 75.0)
 
-st.title("📂 Phase 3: Document Production (Digital Redfern)")
-st.info("This module replaces the Redfern Schedule. Requests, Objections, and Tribunal Decisions are tracked here to calculate Cost Allocation scores.")
-
-# --- HELPER: METRICS DASHBOARD [cite: 26, 59] ---
-def display_metrics(target_role):
-    """
-    Displays the 'Proportionality Score' (Rejection Rate) for the target party.
-    """
-    requests = doc_prod.get(target_role, [])
-    if not requests:
-        return
+# --- SCORECARD METRICS ---
+def display_scorecard(target_role):
+    reqs = doc_prod.get(target_role, [])
+    if not reqs: return
     
-    total = len(requests)
-    # Count decisions
-    allowed = sum(1 for r in requests if r.get('status') == 'Allowed')
-    denied = sum(1 for r in requests if r.get('status') == 'Denied')
-    pending = total - allowed - denied
+    total = len(reqs)
+    denied = sum(1 for r in reqs if r.get('status') == 'Denied')
+    allowed = sum(1 for r in reqs if r.get('status') == 'Allowed')
     
-    # Calculate Rejection Ratio 
-    # Denied / (Allowed + Denied) or Denied / Total? Usually Total resolved requests.
-    resolved = allowed + denied
-    if resolved > 0:
-        ratio = (denied / total) * 100
-    else:
-        ratio = 0.0
-        
-    # Display Metrics
+    ratio = (denied / total) * 100 if total > 0 else 0
+    
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Requests", total)
     c2.metric("✅ Allowed", allowed)
-    c3.metric("❌ Rejected", denied)
+    c3.metric("❌ Denied", denied)
     
-    # Color logic for Threshold 
-    ratio_color = "normal"
-    if ratio > threshold: ratio_color = "inverse" # Red alert if high
-    
-    c4.metric("Rejection Rate", f"{ratio:.1f}%", help=f"Threshold: {threshold}%. If exceeded, 100% costs borne by requester.", delta_color=ratio_color)
-    
-    if ratio > threshold:
-        st.error(f"⚠️ Warning: {target_role.title()}'s rejection rate ({ratio:.1f}%) exceeds the {threshold}% threshold. Cost penalties may apply.")
+    # Visual warning if penalty threshold exceeded [cite: 120]
+    color = "inverse" if ratio > threshold else "normal"
+    c4.metric("Rejection Rate", f"{ratio:.1f}%", delta_color=color, help=f"Threshold: {threshold}%. If exceeded, cost penalties apply.")
 
-# --- MAIN RENDERER ---
-def render_redfern_schedule(requesting_role, obeying_role):
-    """
-    Renders the full Request -> Objection -> Reply -> Decision workflow.
-    """
-    # 1. SHOW SCORECARD
-    st.markdown(f"### 📊 {requesting_role.title()}'s Proportionality Score")
-    display_metrics(requesting_role)
+# --- RENDERER ---
+def render_redfern(requesting_role, obeying_role):
+    st.markdown(f"### 📊 {requesting_role.title()}'s Requests")
+    display_scorecard(requesting_role)
     st.divider()
-
-    requests = doc_prod.get(requesting_role, [])
     
-    # 2. ADD NEW REQUEST (Only Requesting Party)
+    requests = doc_prod.get(requesting_role, [])
+
+    # 1. ADD REQUEST (Requesting Party Only)
     if role == requesting_role:
-        with st.expander(f"➕ Draft New Request (No. {len(requests) + 1})", expanded=False):
-            with st.form(f"add_req_{requesting_role}"):
-                c_desc, c_rel = st.columns(2)
-                desc = c_desc.text_area("1. Description of Documents", height=100, help="Be specific and narrow.")
-                rel = c_rel.text_area("2. Relevance & Materiality", height=100, help="Reference specific paragraphs in Pleadings.")
-                
-                if st.form_submit_button("Submit Request"):
+        with st.expander(f"➕ Add New Request"):
+            with st.form(f"add_{requesting_role}"):
+                desc = st.text_area("Description")
+                rel = st.text_area("Relevance")
+                if st.form_submit_button("Submit"):
                     new_id = len(requests) + 1
                     requests.append({
-                        "id": new_id,
-                        "desc": desc,
-                        "relevance": rel,
-                        "objection": "",
-                        "reply": "",
-                        "decision": "",
-                        "status": "Pending", # Pending, Objected, Responded, Allowed, Denied
-                        "produced": False
+                        "id": new_id, "desc": desc, "relevance": rel,
+                        "objection": "", "reply": "", "decision": "", 
+                        "status": "Pending"
                     })
                     save_complex_data("doc_prod", doc_prod)
-                    st.success("Request Submitted.")
                     st.rerun()
-    
-    # 3. RENDER THE LIST (The "Redfern" Rows)
-    if not requests:
-        st.info(f"No requests submitted by {requesting_role.title()} yet.")
-        return
 
+    # 2. LIST REQUESTS
     for i, r in enumerate(requests):
-        # VISUAL CONTAINER FOR EACH REQUEST
-        # Color border based on Status
-        status_colors = {
-            "Pending": "grey", "Objected": "orange", "Responded": "blue", 
-            "Allowed": "green", "Denied": "red"
-        }
-        curr_color = status_colors.get(r['status'], "grey")
+        # Status Color Coding
+        status_map = {"Allowed": "green", "Denied": "red", "Pending": "grey", "Objected": "orange"}
+        s_color = status_map.get(r.get('status', 'Pending'), "grey")
         
         with st.container(border=True):
-            # HEADER: ID - Status
-            c_head_1, c_head_2 = st.columns([4, 1])
-            c_head_1.markdown(f"**Request No. {r['id']}**")
-            c_head_2.caption(f"Status: :{curr_color}[**{r['status']}**]")
+            c_head, c_stat = st.columns([5, 1])
+            c_head.markdown(f"**Request #{r['id']}**")
+            c_stat.markdown(f":{s_color}[**{r.get('status', 'Pending')}**]")
             
-            # COLUMNS: Description | Relevance
             c1, c2 = st.columns(2)
-            c1.info(f"**Description:**\n{r['desc']}")
-            c2.info(f"**Relevance:**\n{r['relevance']}")
+            c1.info(f"**Request:**\n{r['desc']}")
+            c2.caption(f"**Relevance:**\n{r['relevance']}")
             
-            # --- OBJECTION WORKFLOW (Obeying Party) ---
+            # OBJECTION (Obeying Party)
             if r['objection']:
-                st.warning(f"**🛡️ Objection ({obeying_role.title()}):**\n{r['objection']}")
-            
-            if role == obeying_role and not r['objection'] and r['status'] == "Pending":
-                with st.form(f"obj_form_{requesting_role}_{i}"):
-                    obj_text = st.text_area("Raise Objection (Reasons)", height=100)
-                    cols = st.columns([1, 1])
-                    if cols[0].form_submit_button("Submit Objection"):
-                        r['objection'] = obj_text
-                        r['status'] = "Objected"
-                        save_complex_data("doc_prod", doc_prod)
-                        st.rerun()
-                    if cols[1].form_submit_button("No Objection (Agree to Produce)"):
-                        r['status'] = "Allowed" # Treat as allowed if agreed
-                        r['decision'] = "Voluntary Production"
-                        save_complex_data("doc_prod", doc_prod)
-                        st.rerun()
+                st.warning(f"**🛡️ Objection:** {r['objection']}")
+            elif role == obeying_role and r.get('status') == 'Pending':
+                with st.form(f"obj_{requesting_role}_{i}"):
+                    obj_txt = st.text_area("Raise Objection")
+                    if st.form_submit_button("Submit Objection"):
+                        r['objection'] = obj_txt; r['status'] = "Objected"
+                        save_complex_data("doc_prod", doc_prod); st.rerun()
 
-            # --- REPLY WORKFLOW (Requesting Party) ---
-            if r['objection'] and r['reply']:
-                st.markdown(f"**↩️ Reply to Objection ({requesting_role.title()}):**\n{r['reply']}")
-
-            if role == requesting_role and r['status'] == "Objected":
-                with st.form(f"reply_form_{requesting_role}_{i}"):
-                    rep_text = st.text_area("Reply to Objection", height=100)
+            # REPLY (Requesting Party)
+            if r['reply']:
+                st.info(f"**↩️ Reply:** {r['reply']}")
+            elif role == requesting_role and r.get('status') == 'Objected':
+                 with st.form(f"rep_{requesting_role}_{i}"):
+                    rep_txt = st.text_area("Reply to Objection")
                     if st.form_submit_button("Submit Reply"):
-                        r['reply'] = rep_text
-                        r['status'] = "Responded" # Ready for Tribunal
-                        save_complex_data("doc_prod", doc_prod)
-                        st.rerun()
+                        r['reply'] = rep_txt; r['status'] = "Responded"
+                        save_complex_data("doc_prod", doc_prod); st.rerun()
 
-            # --- DECISION WORKFLOW (Arbitrator) ---
-            # Visible if status is Responded (Dispute) OR Arbitrator wants to intervene
-            if r['decision']:
-                icon = "✅" if r['status'] == "Allowed" else "❌"
-                st.success(f"**⚖️ Tribunal Decision:** {icon} {r['status']}\n\n{r['decision']}")
+            # DECISION (Arbitrator) [cite: 117]
+            if r.get('decision'):
+                st.markdown(f"**⚖️ Ruling:** {r['decision']}")
             
-            if role == 'arbitrator' and r['status'] in ["Objected", "Responded", "Pending"]:
+            if role == 'arbitrator':
                 st.divider()
-                st.write(" **Tribunal Ruling:**")
-                with st.form(f"ruling_form_{i}"):
-                    reason = st.text_area("Reasoning for Decision")
-                    c_a, c_d = st.columns(2)
+                st.write("**Tribunal Decision**")
+                c_a, c_d = st.columns(2)
+                if c_a.button("✅ Allow", key=f"al_{requesting_role}_{i}"):
+                    r['status'] = "Allowed"; r['decision'] = "Allowed."
+                    save_complex_data("doc_prod", doc_prod); st.rerun()
                     
-                    # Buttons
-                    allow = c_a.form_submit_button("✅ ALLOW Request")
-                    deny = c_d.form_submit_button("❌ DENY Request")
-                    
-                    if allow:
-                        r['status'] = "Allowed"
-                        r['decision'] = reason if reason else "Allowed."
-                        save_complex_data("doc_prod", doc_prod)
-                        st.rerun()
-                        
-                    if deny:
-                        r['status'] = "Denied"
-                        r['decision'] = reason if reason else "Denied."
-                        save_complex_data("doc_prod", doc_prod)
-                        st.rerun()
+                if c_d.button("❌ Deny", key=f"de_{requesting_role}_{i}"):
+                    r['status'] = "Denied"; r['decision'] = "Denied." # AI counts this
+                    save_complex_data("doc_prod", doc_prod); st.rerun()
 
-# --- TABS FOR CLAIMANT / RESPONDENT LISTS ---
-tab_c, tab_r = st.tabs(["📄 Requests by Claimant", "📄 Requests by Respondent"])
-
-with tab_c:
-    render_redfern_schedule("claimant", "respondent")
-
-with tab_r:
-    render_redfern_schedule("respondent", "claimant")
+# --- TABS ---
+tab_c, tab_r = st.tabs(["Claimant Requests", "Respondent Requests"])
+with tab_c: render_redfern("claimant", "respondent")
+with tab_r: render_redfern("respondent", "claimant")
